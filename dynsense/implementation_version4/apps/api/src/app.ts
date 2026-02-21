@@ -1,0 +1,62 @@
+// Ref: design-doc §3.2 — Fastify 5 application factory
+// Ref: design-doc §3.1 — Fastify API with 14 modules under /api/v1
+import Fastify from "fastify";
+import cors from "@fastify/cors";
+import jwt from "@fastify/jwt";
+import { errorHandler } from "./middleware/error-handler.js";
+import { authRoutes } from "./routes/auth.js";
+import { projectRoutes } from "./routes/projects.js";
+import { taskRoutes } from "./routes/tasks.js";
+import type { Env } from "./config/env.js";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    env: Env;
+  }
+}
+
+export async function buildApp(env: Env) {
+  const app = Fastify({
+    logger: {
+      level: env.NODE_ENV === "production" ? "info" : "debug",
+      transport: env.NODE_ENV === "development"
+        ? { target: "pino-pretty" }
+        : undefined,
+    },
+  });
+
+  // Decorate env so routes can access it
+  app.decorate("env", env);
+
+  // CORS
+  await app.register(cors, { origin: true });
+
+  // JWT (HS256 for R0)
+  await app.register(jwt, { secret: env.JWT_SECRET });
+
+  // Global error handler
+  app.setErrorHandler(errorHandler);
+
+  // Health check
+  app.get("/health", async () => ({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    version: "0.1.0",
+  }));
+
+  // API v1 prefix — route modules
+  app.register(async (api) => {
+    api.get("/", async () => ({ message: "Dynsense API v1" }));
+
+    // Auth: /api/v1/auth/*
+    api.register(authRoutes, { prefix: "/auth" });
+
+    // Projects: /api/v1/projects/*
+    api.register(projectRoutes, { prefix: "/projects" });
+
+    // Tasks: /api/v1/tasks/*
+    api.register(taskRoutes, { prefix: "/tasks" });
+  }, { prefix: "/api/v1" });
+
+  return app;
+}

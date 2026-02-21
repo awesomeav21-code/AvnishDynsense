@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Native PM Tool — Architecture Diagram</title>
+<style>
+  :root {
+    --bg: #f8fafb;
+    --card-bg: #ffffff;
+    --text: #2d3748;
+    --text-light: #718096;
+    --text-white: #ffffff;
+    --border: #e2e8f0;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
+    --radius: 12px;
+    --radius-sm: 8px;
+
+    /* Soothing tier colors — muted pastels */
+    --tier1: #6C9BCF;    /* Soft blue */
+    --tier1-bg: #EBF2FA;
+    --tier2: #7B8EC8;    /* Muted indigo */
+    --tier2-bg: #EDEEF8;
+    --tier3: #8AA7A0;    /* Sage green */
+    --tier3-bg: #EDF4F2;
+    --tier4: #C9A96E;    /* Warm gold */
+    --tier4-bg: #FBF5E9;
+    --tier5: #B07BAC;    /* Soft purple */
+    --tier5-bg: #F4EBF4;
+    --tier6: #6BA3A0;    /* Teal */
+    --tier6-bg: #EAF4F3;
+    --tier7: #A0856E;    /* Warm brown */
+    --tier7-bg: #F5F0EB;
+    --tier8: #C97B7B;    /* Soft rose */
+    --tier8-bg: #FBEFEF;
+    --tier9: #7BA6C9;    /* Steel blue */
+    --tier9-bg: #ECF2F8;
+    --tier10: #8B9DC3;   /* Periwinkle */
+    --tier10-bg: #EFF1F7;
+
+    /* Accent */
+    --accent: #5A8F7B;
+    --accent-light: #EDF7F3;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 40px 24px;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .header .subtitle {
+    font-size: 15px;
+    color: var(--text-light);
+    max-width: 700px;
+    margin: 0 auto 16px;
+  }
+  .header .badges {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--accent-light);
+    color: var(--accent);
+    border: 1px solid #d0e8df;
+  }
+  .badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Section headers */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-light);
+    margin: 40px 0 16px;
+    padding-left: 4px;
+  }
+
+  /* Tier card */
+  .tier {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    transition: box-shadow 0.2s ease;
+  }
+  .tier:hover {
+    box-shadow: var(--shadow-lg);
+  }
+  .tier-header {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    gap: 14px;
+    cursor: default;
+  }
+  .tier-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-white);
+    flex-shrink: 0;
+  }
+  .tier-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .tier-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .tier-tech {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 2px;
+  }
+  .tier-release {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #f1f5f9;
+    color: var(--text-light);
+    flex-shrink: 0;
+  }
+  .tier-body {
+    padding: 0 20px 16px 70px;
+  }
+
+  /* Component grid inside tiers */
+  .components {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .component {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: transform 0.15s ease;
+  }
+  .component:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Color assignments for components */
+  .t1 .component { background: var(--tier1-bg); color: var(--tier1); border-color: #d4e2f0; }
+  .t1 .tier-number { background: var(--tier1); }
+  .t2 .component { background: var(--tier2-bg); color: var(--tier2); border-color: #d6d9ed; }
+  .t2 .tier-number { background: var(--tier2); }
+  .t3 .component { background: var(--tier3-bg); color: var(--tier3); border-color: #d2e2de; }
+  .t3 .tier-number { background: var(--tier3); }
+  .t4 .component { background: var(--tier4-bg); color: #9a7d45; border-color: #ede0c5; }
+  .t4 .tier-number { background: var(--tier4); }
+  .t5 .component { background: var(--tier5-bg); color: var(--tier5); border-color: #ddd0dd; }
+  .t5 .tier-number { background: var(--tier5); }
+  .t6 .component { background: var(--tier6-bg); color: #4d7f7c; border-color: #cde2e0; }
+  .t6 .tier-number { background: var(--tier6); }
+  .t7 .component { background: var(--tier7-bg); color: var(--tier7); border-color: #ddd4ca; }
+  .t7 .tier-number { background: var(--tier7); }
+  .t8 .component { background: var(--tier8-bg); color: #a05656; border-color: #e8d2d2; }
+  .t8 .tier-number { background: var(--tier8); }
+  .t9 .component { background: var(--tier9-bg); color: #5580a3; border-color: #d0dde9; }
+  .t9 .tier-number { background: var(--tier9); }
+  .t10 .component { background: var(--tier10-bg); color: #6476a0; border-color: #d4d9e8; }
+  .t10 .tier-number { background: var(--tier10); }
+
+  /* Arrow connectors */
+  .connector {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+  }
+  .connector svg {
+    width: 24px;
+    height: 20px;
+    opacity: 0.3;
+  }
+
+  /* AI Pipeline section */
+  .pipeline-section {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .pipeline-section h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+
+  /* 7-stage pipeline */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 8px 0;
+  }
+  .stage {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 14px 10px;
+    border-radius: var(--radius-sm);
+    position: relative;
+  }
+  .stage-num {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    opacity: 0.7;
+  }
+  .stage-name {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .stage-detail {
+    font-size: 10px;
+    opacity: 0.8;
+  }
+  .stage-arrow {
+    flex-shrink: 0;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #cbd5e0;
+    font-size: 16px;
+    font-weight: 300;
+  }
+
+  .s1 { background: #e8f4f8; color: #2b6682; }
+  .s2 { background: #fef3e2; color: #8a6515; }
+  .s3 { background: #e8f5e9; color: #2e6e3e; }
+  .s4 { background: #fff3e0; color: #8a5e15; }
+  .s5 { background: #ede7f6; color: #5e35a1; }
+  .s6 { background: #e3f2fd; color: #1565c0; }
+  .s7 { background: #fce4ec; color: #8e2444; }
+
+  /* Data flow section */
+  .flow-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    margin-bottom: 12px;
+  }
+  .flow-card h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .flow-card h4 .flow-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .flow-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .flow-step {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    background: #f7fafc;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .flow-arrow {
+    color: #cbd5e0;
+    font-size: 14px;
+  }
+
+  /* Tech stack grid */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .stack-item {
+    background: var(--card-bg);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+  .stack-item .label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-light);
+    margin-bottom: 4px;
+  }
+  .stack-item .value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .stack-item .note {
+    font-size: 11px;
+    color: var(--text-light);
+    margin-top: 4px;
+  }
+
+  /* ADR table */
+  .adr-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .adr-table th {
+    background: #f7fafc;
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-light);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .adr-table td {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text);
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .adr-table tr:last-child td { border-bottom: none; }
+  .adr-table .adr-id {
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .adr-table .adr-decision { font-weight: 500; }
+  .adr-table .adr-over { color: var(--text-light); font-size: 12px; }
+
+  /* Cost model */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .cost-card {
+    background: var(--card-bg);
+    border-radius: var(--radius-sm);
+    padding: 20px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .cost-card .release {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-light);
+    margin-bottom: 8px;
+  }
+  .cost-card .amount {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .cost-card .period {
+    font-size: 12px;
+    color: var(--text-light);
+  }
+  .cost-card .detail {
+    font-size: 11px;
+    color: var(--text-light);
+    margin-top: 8px;
+    line-height: 1.4;
+  }
+
+  /* Event streams */
+  .stream-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stream-card {
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+  }
+  .stream-card .stream-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tier5);
+    margin-bottom: 6px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .stream-card .stream-subjects {
+    font-size: 11px;
+    color: var(--text-light);
+    line-height: 1.5;
+  }
+
+  /* Database tables */
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .db-table {
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--tier6-bg);
+    border: 1px solid #cde2e0;
+    font-size: 13px;
+    font-weight: 500;
+    color: #4d7f7c;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    text-align: center;
+  }
+  .db-table.ai-table {
+    background: var(--tier4-bg);
+    border-color: #ede0c5;
+    color: #9a7d45;
+  }
+  .db-table.system-table {
+    background: #f0f0f5;
+    border-color: #d8d8e2;
+    color: #6e6e8a;
+  }
+
+  /* Release timeline */
+  .timeline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .timeline-card {
+    background: var(--card-bg);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .timeline-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+  }
+  .timeline-card.r0::before { background: var(--tier1); }
+  .timeline-card.r1::before { background: var(--tier4); }
+  .timeline-card.r2::before { background: var(--tier3); }
+  .timeline-card.r3::before { background: var(--tier5); }
+  .timeline-card .tl-release {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .timeline-card .tl-period {
+    font-size: 11px;
+    color: var(--text-light);
+    margin-bottom: 10px;
+  }
+  .timeline-card .tl-focus {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .timeline-card .tl-features {
+    font-size: 11px;
+    color: var(--text-light);
+    line-height: 1.5;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-light);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    body { padding: 20px 16px; }
+    .header h1 { font-size: 22px; }
+    .pipeline { flex-direction: column; align-items: stretch; }
+    .stage-arrow { transform: rotate(90deg); width: auto; padding: 4px 0; }
+    .cost-grid { grid-template-columns: repeat(2, 1fr); }
+    .stream-grid { grid-template-columns: 1fr; }
+    .timeline { grid-template-columns: 1fr; }
+    .tier-body { padding-left: 20px; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>AI-Native PM Tool</h1>
+    <p class="subtitle">System Architecture v3.0 — "The AI runs the project. The human supervises."</p>
+    <div class="badges">
+      <span class="badge"><span class="dot"></span>AWS Single-Cloud</span>
+      <span class="badge"><span class="dot"></span>10-Tier Architecture</span>
+      <span class="badge"><span class="dot"></span>Event-Driven</span>
+      <span class="badge"><span class="dot"></span>Tenant-Isolated</span>
+      <span class="badge"><span class="dot"></span>12-Month Build</span>
+    </div>
+  </div>
+
+  <!-- Release Timeline -->
+  <div class="section-label">Release Timeline</div>
+  <div class="timeline">
+    <div class="timeline-card r0">
+      <div class="tl-release">R0</div>
+      <div class="tl-period">Months 1–3 &middot; 26 features</div>
+      <div class="tl-focus">Foundation + Core AI Loop</div>
+      <div class="tl-features">Internal MVP. NL→WBS, What's Next, shadow mode, audit trail, basic UI. The daily loop must be sticky.</div>
+    </div>
+    <div class="timeline-card r1">
+      <div class="tl-release">R1</div>
+      <div class="tl-period">Months 4–6 &middot; 27 features</div>
+      <div class="tl-focus">Intelligence + SaaS Prep</div>
+      <div class="tl-features">AI PM Agent, risk prediction, Git/Slack integration, SSO/MFA, SOC 2 controls, client projection pilot.</div>
+    </div>
+    <div class="timeline-card r2">
+      <div class="tl-release">R2</div>
+      <div class="tl-period">Months 7–9 &middot; 20 features</div>
+      <div class="tl-focus">External Launch</div>
+      <div class="tl-features">Multi-tenancy, client portal, tiered pricing, public API, SOC 2 Type I, AI guardrails. 3+ paying tenants.</div>
+    </div>
+    <div class="timeline-card r3">
+      <div class="tl-release">R3</div>
+      <div class="tl-period">Months 10–12 &middot; 15 features</div>
+      <div class="tl-focus">Platform + Scale</div>
+      <div class="tl-features">Per-tenant AI learning, SOW generation, self-service onboarding, SOC 2 Type II. 10+ tenants. The moat.</div>
+    </div>
+  </div>
+
+  <!-- Technology Stack -->
+  <div class="section-label">Technology Stack</div>
+  <div class="stack-grid">
+    <div class="stack-item">
+      <div class="label">Frontend</div>
+      <div class="value">Next.js 15</div>
+      <div class="note">App Router + React Server Components</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">API Server</div>
+      <div class="value">Fastify 5</div>
+      <div class="note">Node.js 22 LTS + TypeScript 5+</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Database</div>
+      <div class="value">PostgreSQL 16</div>
+      <div class="note">+ pgvector + RLS tenant isolation</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Cache / Sessions</div>
+      <div class="value">Redis 7</div>
+      <div class="note">ElastiCache Serverless</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Event Bus</div>
+      <div class="value">NATS JetStream</div>
+      <div class="note">3-node cluster, 30-day retention</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">AI Model</div>
+      <div class="value">Claude API</div>
+      <div class="note">Opus 4 (gen) + Sonnet 4.5 (query)</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Compute</div>
+      <div class="value">ECS Fargate</div>
+      <div class="note">Serverless containers, auto-scaling</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Infrastructure</div>
+      <div class="value">AWS CDK</div>
+      <div class="note">TypeScript IaC, 5 stacks</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">ORM</div>
+      <div class="value">Drizzle</div>
+      <div class="note">Schema-as-code, typed migrations</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">UI Components</div>
+      <div class="value">Shadcn UI</div>
+      <div class="note">+ Tailwind CSS tokens</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">Monitoring</div>
+      <div class="value">CloudWatch + Sentry</div>
+      <div class="note">+ X-Ray distributed tracing</div>
+    </div>
+    <div class="stack-item">
+      <div class="label">CI/CD</div>
+      <div class="value">GitHub Actions</div>
+      <div class="note">Trunk-based, blue/green deploy</div>
+    </div>
+  </div>
+
+  <!-- 10-Tier Architecture -->
+  <div class="section-label">10-Tier Architecture</div>
+
+  <!-- Tier 1 -->
+  <div class="tier t1">
+    <div class="tier-header">
+      <div class="tier-number">1</div>
+      <div class="tier-info">
+        <div class="tier-name">Client Layer</div>
+        <div class="tier-tech">Next.js 15 App Router &middot; React Server Components &middot; Shadcn UI</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components">
+        <span class="component">Web App (Internal)</span>
+        <span class="component">AI Review/Approve UI</span>
+        <span class="component">What's Next View</span>
+        <span class="component">NL Query Panel</span>
+        <span class="component">Client Portal (R2)</span>
+        <span class="component">Slack/Teams Bot (R1)</span>
+        <span class="component">Public REST API (R2)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 2 -->
+  <div class="tier t2">
+    <div class="tier-header">
+      <div class="tier-number">2</div>
+      <div class="tier-info">
+        <div class="tier-name">Gateway & Authentication</div>
+        <div class="tier-tech">AWS ALB + WAF &middot; JWT RS256 &middot; RBAC &middot; Redis Sessions</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components">
+        <span class="component">ALB + WAF (TLS 1.3)</span>
+        <span class="component">JWT Auth {tenant_id, user_id, role}</span>
+        <span class="component">RBAC Engine</span>
+        <span class="component">Tenant Config Service</span>
+        <span class="component">SSO/MFA (R1)</span>
+        <span class="component">WebSocket Gateway (R1)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 3 -->
+  <div class="tier t3">
+    <div class="tier-header">
+      <div class="tier-number">3</div>
+      <div class="tier-info">
+        <div class="tier-name">Application Services</div>
+        <div class="tier-tech">Fastify 5 Modular Monolith &middot; Drizzle ORM &middot; TypeBox + Zod</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components">
+        <span class="component">Project Module</span>
+        <span class="component">Task Module</span>
+        <span class="component">Dependency Module</span>
+        <span class="component">Comment Module</span>
+        <span class="component">Audit Module</span>
+        <span class="component">User Module</span>
+        <span class="component">Projection Module (R1)</span>
+        <span class="component">Config Module</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 4 — THE PRODUCT -->
+  <div class="tier t4" style="border: 2px solid var(--tier4); box-shadow: 0 4px 20px rgba(201,169,110,0.15);">
+    <div class="tier-header">
+      <div class="tier-number" style="width: 40px; height: 40px; font-size: 15px;">4</div>
+      <div class="tier-info">
+        <div class="tier-name" style="font-size: 16px;">AI Engine <span style="font-size: 11px; color: #9a7d45; font-weight: 500; margin-left: 8px;">THIS IS THE PRODUCT</span></div>
+        <div class="tier-tech">Claude API (Opus 4 + Sonnet 4.5) &middot; 7-Stage Orchestrator &middot; RAG + pgvector</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components" style="margin-bottom: 10px;">
+        <span class="component" style="font-weight: 600; border-width: 2px;">AI Orchestrator (7-stage)</span>
+        <span class="component">Autonomy Policy Engine</span>
+        <span class="component">LLM Gateway + Circuit Breaker</span>
+        <span class="component">Context Assembly + RAG</span>
+      </div>
+      <div class="components" style="margin-bottom: 10px;">
+        <span class="component" style="font-weight: 600; border-width: 2px;">NL→WBS Generator (40% R0)</span>
+        <span class="component">What's Next Engine</span>
+        <span class="component">NL Query Engine</span>
+        <span class="component">Summary Engine</span>
+      </div>
+      <div class="components">
+        <span class="component">Risk Predictor (R1)</span>
+        <span class="component">AI PM Agent (R1)</span>
+        <span class="component">Scope Creep Detector (R1)</span>
+        <span class="component">SOW Generator (R3)</span>
+        <span class="component">Per-Tenant Learning (R3)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 5 -->
+  <div class="tier t5">
+    <div class="tier-header">
+      <div class="tier-number">5</div>
+      <div class="tier-info">
+        <div class="tier-name">Event Bus</div>
+        <div class="tier-tech">NATS JetStream 2.10+ &middot; 3-Node Cluster &middot; 30-Day Retention</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components">
+        <span class="component">pm.tasks (7 subjects)</span>
+        <span class="component">pm.projects (4 subjects)</span>
+        <span class="component">pm.comments (3 subjects)</span>
+        <span class="component">pm.ai (5 subjects)</span>
+        <span class="component">pm.integrations (4 subjects)</span>
+        <span class="component">pm.system (3 subjects)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 6 -->
+  <div class="tier t6">
+    <div class="tier-header">
+      <div class="tier-number">6</div>
+      <div class="tier-info">
+        <div class="tier-name">Database</div>
+        <div class="tier-tech">PostgreSQL 16 + pgvector (RDS) &middot; Redis 7 (ElastiCache) &middot; S3</div>
+      </div>
+      <div class="tier-release">R0</div>
+    </div>
+    <div class="tier-body">
+      <div class="components" style="margin-bottom: 8px;">
+        <span class="component">tenants</span>
+        <span class="component">users</span>
+        <span class="component">projects</span>
+        <span class="component">phases</span>
+        <span class="component">tasks</span>
+        <span class="component">task_assignments</span>
+        <span class="component">task_dependencies</span>
+        <span class="component">comments</span>
+        <span class="component">tags</span>
+      </div>
+      <div class="components">
+        <span class="component" style="background: var(--tier4-bg); color: #9a7d45; border-color: #ede0c5;">ai_actions</span>
+        <span class="component" style="background: var(--tier4-bg); color: #9a7d45; border-color: #ede0c5;">ai_cost_log</span>
+        <span class="component" style="background: var(--tier4-bg); color: #9a7d45; border-color: #ede0c5;">embeddings</span>
+        <span class="component" style="background: #f0f0f5; color: #6e6e8a; border-color: #d8d8e2;">audit_log</span>
+        <span class="component" style="background: #f0f0f5; color: #6e6e8a; border-color: #d8d8e2;">tenant_configs</span>
+        <span class="component" style="font-weight: 600;">RLS on ALL tables</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><svg viewBox="0 0 24 20"><path d="M12 0 L12 14 M7 10 L12 16 L17 10" stroke="#cbd5e0" stroke-width="2" fill="none"/></svg></div>
+
+  <!-- Tier 7 -->
+  <div class="tier t7">
+    <div class="tier-header">
+      <div class="tier-number">7</div>
+      <div class="tier-info">
+        <div class="tier-name">Integration Gateway</div>
+        <div class="tier-tech">Fastify Plugin Adapters &middot; OAuth 2.0 &middot; Webhooks</div>
+      </div>
+      <div class="tier-release">R1</div>
+    </div>
+    <div class="tier-body">
+      <div class="components">
+        <span class="component">Git Adapter (GitHub/GitLab)</span>
+        <span class="component">Slack/Teams Adapter</span>
+        <span class="component">Calendar Adapter</span>
+        <span class="component">Outbound Webhooks (R2)</span>
+        <span class="component">Jira Import (R2)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cross-cutting tiers -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px;">
+    <!-- Tier 8 -->
+    <div class="tier t8" style="margin-bottom: 0;">
+      <div class="tier-header" style="padding: 14px 16px;">
+        <div class="tier-number" style="width: 30px; height: 30px; font-size: 12px;">8</div>
+        <div class="tier-info">
+          <div class="tier-name" style="font-size: 13px;">Security & AI Safety</div>
+          <div class="tier-tech" style="font-size: 11px;">AES-256 &middot; TLS 1.3 &middot; RLS &middot; SOC 2</div>
+        </div>
+      </div>
+    </div>
+    <!-- Tier 9 -->
+    <div class="tier t9" style="margin-bottom: 0;">
+      <div class="tier-header" style="padding: 14px 16px;">
+        <div class="tier-number" style="width: 30px; height: 30px; font-size: 12px;">9</div>
+        <div class="tier-info">
+          <div class="tier-name" style="font-size: 13px;">Deployment & CI/CD</div>
+          <div class="tier-tech" style="font-size: 11px;">ECS Fargate &middot; CDK &middot; GitHub Actions</div>
+        </div>
+      </div>
+    </div>
+    <!-- Tier 10 -->
+    <div class="tier t10" style="margin-bottom: 0;">
+      <div class="tier-header" style="padding: 14px 16px;">
+        <div class="tier-number" style="width: 30px; height: 30px; font-size: 12px;">10</div>
+        <div class="tier-info">
+          <div class="tier-name" style="font-size: 13px;">Monitoring & Observability</div>
+          <div class="tier-tech" style="font-size: 11px;">CloudWatch &middot; X-Ray &middot; Sentry</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Orchestrator Pipeline -->
+  <div class="section-label">AI Orchestrator — 7-Stage Pipeline</div>
+  <div class="pipeline-section">
+    <h3>Every AI operation flows through this pipeline. No capability calls the LLM directly.</h3>
+    <div class="pipeline">
+      <div class="stage s1">
+        <div class="stage-num">Stage 1</div>
+        <div class="stage-name">Trigger</div>
+        <div class="stage-detail">NATS event or API request</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s2">
+        <div class="stage-num">Stage 2</div>
+        <div class="stage-name">Autonomy Check</div>
+        <div class="stage-detail">Shadow / Propose / Execute</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s3">
+        <div class="stage-num">Stage 3</div>
+        <div class="stage-name">Context Assembly</div>
+        <div class="stage-detail">RAG + events + template</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s4">
+        <div class="stage-num">Stage 4</div>
+        <div class="stage-name">Confidence Check</div>
+        <div class="stage-detail">Threshold 0.6, degrade gracefully</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s5">
+        <div class="stage-num">Stage 5</div>
+        <div class="stage-name">LLM Call</div>
+        <div class="stage-detail">Opus (gen) / Sonnet (query)</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s6">
+        <div class="stage-num">Stage 6</div>
+        <div class="stage-name">Post-Processing</div>
+        <div class="stage-detail">Parse, validate schema</div>
+      </div>
+      <div class="stage-arrow">&#8594;</div>
+      <div class="stage s7">
+        <div class="stage-num">Stage 7</div>
+        <div class="stage-name">Disposition</div>
+        <div class="stage-detail">Log / Propose / Execute</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key Data Flows -->
+  <div class="section-label">Key Data Flows</div>
+
+  <div class="flow-card">
+    <h4><span class="flow-icon" style="background: var(--tier4-bg); color: #9a7d45;">1</span> NL → WBS Generation (The Core Product Flow)</h4>
+    <div class="flow-steps">
+      <span class="flow-step">User describes project in NL</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">POST /api/projects/generate-wbs</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: var(--tier4-bg); border-color: #ede0c5;">AI Orchestrator (7 stages)</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: #e8f5e9; border-color: #c8e6c9;">Domain detect → Template → RAG → Opus → Validate</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">WBS proposal in Review UI</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: #e3f2fd; border-color: #bbdefb;">Human: approve / edit / reject</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Tasks + phases created</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <h4><span class="flow-icon" style="background: var(--tier5-bg); color: var(--tier5);">2</span> AI PM Agent Loop (Autonomous Operations)</h4>
+    <div class="flow-steps">
+      <span class="flow-step">Every 15 min (scheduled)</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Query overdue + stalled tasks</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: var(--tier4-bg); border-color: #ede0c5;">AI Orchestrator</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Autonomy check (quiet hours, limits)</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: #e3f2fd; border-color: #bbdefb;">Nudge via Slack DM</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Log action + NATS event</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <h4><span class="flow-icon" style="background: var(--tier3-bg); color: var(--tier3);">3</span> Client Portal Query (Tenant-Isolated, Projection-Filtered)</h4>
+    <div class="flow-steps">
+      <span class="flow-step">Client: "When will Phase 2 be done?"</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Auth (client JWT, tenant-scoped)</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">RAG scoped to client_visible=true</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: var(--tier4-bg); border-color: #ede0c5;">AI answers from projected data only</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: var(--tier8-bg); border-color: #e8d2d2;">Redaction check</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Response to client</span>
+    </div>
+  </div>
+
+  <div class="flow-card">
+    <h4><span class="flow-icon" style="background: var(--tier7-bg); color: var(--tier7);">4</span> Git → Task Update (Ground Truth Signal)</h4>
+    <div class="flow-steps">
+      <span class="flow-step">Developer pushes commit</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">GitHub webhook fires</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Git adapter parses branch/message</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">Link commit to task</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step" style="background: var(--tier5-bg); border-color: #ddd0dd;">NATS: pm.integrations.git_commit</span>
+      <span class="flow-arrow">&#8594;</span>
+      <span class="flow-step">PR merged → auto-complete task</span>
+    </div>
+  </div>
+
+  <!-- Event Streams -->
+  <div class="section-label">Event Streams (NATS JetStream)</div>
+  <div class="pipeline-section">
+    <div class="stream-grid">
+      <div class="stream-card">
+        <div class="stream-name">pm.tasks</div>
+        <div class="stream-subjects">created, updated, status_changed, assigned, completed, dependency_resolved, dependency_blocked</div>
+      </div>
+      <div class="stream-card">
+        <div class="stream-name">pm.projects</div>
+        <div class="stream-subjects">created, updated, phase_changed, baseline_set</div>
+      </div>
+      <div class="stream-card">
+        <div class="stream-name">pm.comments</div>
+        <div class="stream-subjects">created, updated, deleted</div>
+      </div>
+      <div class="stream-card">
+        <div class="stream-name">pm.ai</div>
+        <div class="stream-subjects">action_proposed, action_approved, action_rejected, action_executed, confidence_low</div>
+      </div>
+      <div class="stream-card">
+        <div class="stream-name">pm.integrations</div>
+        <div class="stream-subjects">git_commit, git_pr_merged, slack_message, calendar_updated</div>
+      </div>
+      <div class="stream-card">
+        <div class="stream-name">pm.system</div>
+        <div class="stream-subjects">config_changed, tenant_created, user_invited</div>
+      </div>
+    </div>
+    <div style="font-size: 12px; color: var(--text-light); padding: 8px 0;">
+      <strong>8 Durable Consumers:</strong> audit-writer &middot; ai-adaptive &middot; ai-summarizer &middot; embedding-pipeline &middot; projection-updater &middot; notification-router &middot; cost-tracker &middot; escalation-monitor
+    </div>
+  </div>
+
+  <!-- ADR Summary -->
+  <div class="section-label">Architecture Decision Records</div>
+  <table class="adr-table">
+    <thead>
+      <tr>
+        <th>ADR</th>
+        <th>Decision</th>
+        <th>Over</th>
+        <th>Revisit When</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="adr-id">ADR-001</td><td class="adr-decision">Hosted Claude API</td><td class="adr-over">Self-hosted / fine-tuned LLM</td><td>R3: evaluate fine-tuning with tenant data</td></tr>
+      <tr><td class="adr-id">ADR-002</td><td class="adr-decision">RAG with pgvector</td><td class="adr-over">Prompt engineering only / Pinecone</td><td>p95 vector search &gt;100ms at 1M+ rows</td></tr>
+      <tr><td class="adr-id">ADR-003</td><td class="adr-decision">NATS JetStream</td><td class="adr-over">Kafka / Redis Streams / SQS</td><td>Consumer count &gt;50 or &gt;100K events/min</td></tr>
+      <tr><td class="adr-id">ADR-004</td><td class="adr-decision">Shared schema + RLS</td><td class="adr-over">Schema-per-tenant / DB-per-tenant</td><td>R3: enterprise tier compliance needs</td></tr>
+      <tr><td class="adr-id">ADR-005</td><td class="adr-decision">Hybrid pricing</td><td class="adr-over">Pure per-seat / pure usage-based</td><td>After 10 paying tenants</td></tr>
+      <tr><td class="adr-id">ADR-006</td><td class="adr-decision">PostgreSQL 16 + pgvector</td><td class="adr-over">Separate vector DB</td><td>Vector corpus &gt;1M rows</td></tr>
+      <tr><td class="adr-id">ADR-007</td><td class="adr-decision">Fastify (Node.js + TS)</td><td class="adr-over">NestJS / FastAPI (Python)</td><td>Python ML requirements in R3</td></tr>
+      <tr><td class="adr-id">ADR-008</td><td class="adr-decision">ECS Fargate</td><td class="adr-over">EKS (Kubernetes)</td><td>Service count &gt;15 or dedicated platform eng</td></tr>
+      <tr><td class="adr-id">ADR-009</td><td class="adr-decision">AWS CDK (TypeScript)</td><td class="adr-over">Terraform / CloudFormation</td><td>Multi-cloud requirement</td></tr>
+      <tr><td class="adr-id">ADR-010</td><td class="adr-decision">Modular monolith</td><td class="adr-over">Microservices from day 1</td><td>Module scaling diverges from monolith</td></tr>
+      <tr><td class="adr-id">ADR-011</td><td class="adr-decision">Next.js 15 (route groups)</td><td class="adr-over">Separate frontends</td><td>Portal needs separate deployment model</td></tr>
+      <tr><td class="adr-id">ADR-012</td><td class="adr-decision">CloudWatch + X-Ray + Sentry</td><td class="adr-over">Datadog / Grafana Cloud</td><td>Observability outgrows CloudWatch</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Cost Model -->
+  <div class="section-label">Monthly Infrastructure Cost</div>
+  <div class="cost-grid">
+    <div class="cost-card">
+      <div class="release">R0 &middot; Internal</div>
+      <div class="amount">~$380</div>
+      <div class="period">/month</div>
+      <div class="detail">1 tenant &middot; 10 users<br>ECS $120 &middot; RDS $95 &middot; AI $30</div>
+    </div>
+    <div class="cost-card">
+      <div class="release">R1 &middot; Pilot</div>
+      <div class="amount">~$565</div>
+      <div class="period">/month</div>
+      <div class="detail">1 tenant &middot; 20 users<br>+ Git/Slack integrations</div>
+    </div>
+    <div class="cost-card">
+      <div class="release">R2 &middot; 3 Tenants</div>
+      <div class="amount">~$1,030</div>
+      <div class="period">/month</div>
+      <div class="detail">3 tenants &middot; 50+ users<br>Revenue: ~$1,500 (78% margin)</div>
+    </div>
+    <div class="cost-card">
+      <div class="release">R3 &middot; 10 Tenants</div>
+      <div class="amount">~$2,110</div>
+      <div class="period">/month</div>
+      <div class="detail">10+ tenants &middot; 100+ users<br>Revenue: ~$5,000 (58% margin)</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    AI-Native PM Tool &middot; Architecture v3.0 &middot; February 2026 &middot; AWS-native &middot; Event-driven &middot; Tenant-isolated &middot; Observable AI &middot; Evergreen R0→R3+
+  </div>
+
+</div>
+</body>
+</html>

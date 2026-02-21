@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Native PM Tool — System Architecture v3.0</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #f5f3ef;
+    color: #334155;
+    line-height: 1.6;
+    padding: 32px 16px;
+  }
+
+  .container {
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding-bottom: 24px;
+    margin-bottom: 28px;
+    border-bottom: 2px solid #cbd5e1;
+  }
+  .header h1 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 4px;
+  }
+  .header .subtitle {
+    font-size: 0.95rem;
+    color: #64748b;
+    margin-bottom: 10px;
+  }
+  .header .meta {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin-bottom: 14px;
+  }
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-teal   { background: #e6f3f0; color: #2d6b5e; border: 1px solid #9ec5bb; }
+  .badge-blue   { background: #e8eef6; color: #3a5a82; border: 1px solid #94a9c9; }
+  .badge-sand   { background: #f0ece4; color: #6b5c44; border: 1px solid #c4b9a4; }
+  .badge-sage   { background: #eaefe6; color: #4d6041; border: 1px solid #a8b89c; }
+  .badge-rose   { background: #f2ece9; color: #7a574c; border: 1px solid #c9afa5; }
+  .badge-lav    { background: #edeaf2; color: #5a4e74; border: 1px solid #b0a5c4; }
+  .badge-warm   { background: #f0ebe3; color: #6b5c46; border: 1px solid #c4b5a0; }
+  .badge-stone  { background: #eae8e4; color: #5a544a; border: 1px solid #b5b0a8; }
+
+  /* ── Tiers ── */
+  .tier {
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 6px;
+    border: 1.5px solid;
+  }
+  .tier-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .tier-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .tier-name {
+    font-family: 'Source Serif 4', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  .tier-cost {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.7);
+  }
+  .tier-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+    margin: 16px 0 8px;
+  }
+
+  /* ── Component Grid ── */
+  .comp-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px 18px;
+    flex: 1 1 180px;
+    min-width: 160px;
+    max-width: 280px;
+    border: 1.5px solid;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: default;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+  }
+  .card .icon { font-size: 1.1rem; display: block; margin-bottom: 6px; }
+  .card .cname { font-size: 0.82rem; font-weight: 700; margin-bottom: 2px; }
+  .card .tech { font-size: 0.72rem; font-weight: 500; opacity: 0.7; margin-bottom: 6px; }
+  .card .desc { font-size: 0.72rem; line-height: 1.45; color: #64748b; }
+
+  /* ── Tier Colors ── */
+  .t-teal      { background: #e6f3f0; border-color: #9ec5bb; }
+  .t-teal .tier-num { background: #4a9585; }
+  .t-teal .tier-name { color: #2d6b5e; }
+  .t-teal .card { border-color: #9ec5bb; }
+  .t-teal .cname { color: #2d6b5e; }
+
+  .t-blue      { background: #e8eef6; border-color: #94a9c9; }
+  .t-blue .tier-num { background: #5a7aa8; }
+  .t-blue .tier-name { color: #3a5a82; }
+  .t-blue .card { border-color: #94a9c9; }
+  .t-blue .cname { color: #3a5a82; }
+
+  .t-sand      { background: #f0ece4; border-color: #c4b9a4; }
+  .t-sand .tier-num { background: #8e7d62; }
+  .t-sand .tier-name { color: #6b5c44; }
+  .t-sand .card { border-color: #c4b9a4; }
+  .t-sand .cname { color: #6b5c44; }
+
+  .t-sage      { background: #eaefe6; border-color: #a8b89c; }
+  .t-sage .tier-num { background: #6d8460; }
+  .t-sage .tier-name { color: #4d6041; }
+  .t-sage .card { border-color: #a8b89c; }
+  .t-sage .cname { color: #4d6041; }
+
+  .t-rose      { background: #f2ece9; border-color: #c9afa5; }
+  .t-rose .tier-num { background: #a0776a; }
+  .t-rose .tier-name { color: #7a574c; }
+  .t-rose .card { border-color: #c9afa5; }
+  .t-rose .cname { color: #7a574c; }
+
+  .t-lav       { background: #edeaf2; border-color: #b0a5c4; }
+  .t-lav .tier-num { background: #7b6d99; }
+  .t-lav .tier-name { color: #5a4e74; }
+  .t-lav .card { border-color: #b0a5c4; }
+  .t-lav .cname { color: #5a4e74; }
+
+  .t-warm      { background: #f0ebe3; border-color: #c4b5a0; }
+  .t-warm .tier-num { background: #917e64; }
+  .t-warm .tier-name { color: #6b5c46; }
+  .t-warm .card { border-color: #c4b5a0; }
+  .t-warm .cname { color: #6b5c46; }
+
+  .t-stone     { background: #eae8e4; border-color: #b5b0a8; }
+  .t-stone .tier-num { background: #7c7568; }
+  .t-stone .tier-name { color: #5a544a; }
+  .t-stone .card { border-color: #b5b0a8; }
+  .t-stone .cname { color: #5a544a; }
+
+  /* Olive (for AI Engine tier - extra) */
+  .t-olive      { background: #eef0e6; border-color: #a9b396; }
+  .t-olive .tier-num { background: #6b7a52; }
+  .t-olive .tier-name { color: #4a5638; }
+  .t-olive .card { border-color: #a9b396; }
+  .t-olive .cname { color: #4a5638; }
+
+  /* Mauve (for Event Bus tier) */
+  .t-mauve      { background: #f0eaed; border-color: #c2adb5; }
+  .t-mauve .tier-num { background: #9a7d88; }
+  .t-mauve .tier-name { color: #6e535f; }
+  .t-mauve .card { border-color: #c2adb5; }
+  .t-mauve .cname { color: #6e535f; }
+
+  /* Phase 2 dashed */
+  .t-phase2, .t-phase2 .card {
+    border-style: dashed;
+  }
+
+  /* ── Flow Connector ── */
+  .flow-connector {
+    display: flex;
+    justify-content: center;
+    padding: 6px 0;
+  }
+
+  /* ── Cost Summary ── */
+  .cost-summary {
+    background: #fff;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-top: 24px;
+    border: 1.5px solid #cbd5e1;
+  }
+  .cost-summary h3 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 1rem;
+    color: #1e293b;
+    margin-bottom: 14px;
+  }
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .cost-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    padding: 6px 10px;
+    background: #f8f7f5;
+    border-radius: 8px;
+  }
+  .cost-item .label { color: #64748b; }
+  .cost-item .amt { font-weight: 600; color: #334155; }
+  .cost-total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 10px 12px;
+    background: #e8eef6;
+    border-radius: 8px;
+    color: #3a5a82;
+  }
+
+  /* ── Timeline Grid ── */
+  .timeline-section {
+    background: #fff;
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-top: 16px;
+    border: 1.5px solid #cbd5e1;
+    overflow-x: auto;
+  }
+  .timeline-section h3 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 1rem;
+    color: #1e293b;
+    margin-bottom: 14px;
+  }
+  .timeline-grid {
+    display: grid;
+    grid-template-columns: 140px repeat(12, 1fr);
+    gap: 3px;
+    font-size: 0.68rem;
+    min-width: 700px;
+  }
+  .tl-header {
+    font-weight: 600;
+    color: #64748b;
+    text-align: center;
+    padding: 6px 4px;
+    background: #f8f7f5;
+    border-radius: 4px;
+  }
+  .tl-label {
+    font-weight: 600;
+    color: #334155;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+  }
+  .tl-cell {
+    border-radius: 4px;
+    padding: 4px;
+    text-align: center;
+    font-weight: 500;
+  }
+  .tl-active-teal  { background: #d5ebe5; color: #2d6b5e; }
+  .tl-active-blue  { background: #d6dfee; color: #3a5a82; }
+  .tl-active-sand  { background: #e6e0d4; color: #6b5c44; }
+  .tl-active-olive { background: #dfe3d5; color: #4a5638; }
+  .tl-active-rose  { background: #e8ddd8; color: #7a574c; }
+  .tl-active-lav   { background: #dfdbe8; color: #5a4e74; }
+  .tl-active-warm  { background: #e5ded3; color: #6b5c46; }
+  .tl-active-stone { background: #dedbd7; color: #5a544a; }
+  .tl-empty { background: #f8f7f5; }
+
+  /* ── Legend ── */
+  .legend {
+    background: #fff;
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin-top: 16px;
+    border: 1.5px solid #cbd5e1;
+  }
+  .legend h3 {
+    font-family: 'Source Serif 4', serif;
+    font-size: 1rem;
+    color: #1e293b;
+    margin-bottom: 12px;
+  }
+  .legend-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 24px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #334155;
+  }
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1.5px solid;
+    flex-shrink: 0;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e0dc;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .card { max-width: 100%; flex: 1 1 100%; }
+    .tier-cost { margin-left: 0; margin-top: 4px; }
+    .tier-label { flex-direction: column; align-items: flex-start; }
+    .cost-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ════════ HEADER ════════ -->
+  <header class="header">
+    <h1>AI-Native PM Tool — System Architecture</h1>
+    <p class="subtitle">The AI runs the project. The human supervises. Evergreen from R0 through R3+ without a rewrite.</p>
+    <p class="meta">v3.0 · February 2026 · AWS Single-Cloud · 5–7 Engineers · R0: 1 tenant, 10 users → R3: 10+ tenants, 100+ users, 100K+ tasks</p>
+    <div class="badge-row">
+      <span class="badge badge-teal">Next.js 15</span>
+      <span class="badge badge-sand">Fastify 5 · Node 22</span>
+      <span class="badge badge-olive">Claude Opus 4 / Sonnet 4.5</span>
+      <span class="badge badge-sage">PostgreSQL 16 + pgvector</span>
+      <span class="badge badge-mauve">NATS JetStream</span>
+      <span class="badge badge-warm">ECS Fargate · AWS CDK</span>
+      <span class="badge badge-lav">RLS · SOC 2 · AES-256</span>
+    </div>
+  </header>
+
+  <!-- ════════ TIER 1 — Client Layer ════════ -->
+  <section class="tier t-teal">
+    <div class="tier-label">
+      <span class="tier-num">1</span>
+      <span class="tier-name">Client Layer</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🌐</span>
+        <div class="cname">Web Application</div>
+        <div class="tech">Next.js 15 · App Router · RSC · TypeScript 5+</div>
+        <div class="desc">Primary PM interface with AI review/approve UI, "What's Next" developer view, NL query panel, and project dashboards. SSR for initial load, client components for interactivity.</div>
+      </div>
+      <div class="card">
+        <span class="icon">👤</span>
+        <div class="cname">Client Portal</div>
+        <div class="tech">Next.js 15 · Route group /portal/[tenantSlug] · R2</div>
+        <div class="desc">Client-facing view consuming only the projection layer. Filtered tasks, AI-generated narratives, and scoped NL queries. White-labelable via tenant config.</div>
+      </div>
+      <div class="card">
+        <span class="icon">💬</span>
+        <div class="cname">Slack / Teams Bot</div>
+        <div class="tech">Slack Bolt SDK · Teams Bot Framework · Lambda · R1</div>
+        <div class="desc">AI PM Agent's delivery channel. Slash commands for status, next actions, and queries. Inbound message context, outbound nudges and summaries. IS the mobile interface.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔌</span>
+        <div class="cname">Public REST API</div>
+        <div class="tech">Versioned /api/v1/ · API key auth · OpenAPI 3.1 · R2</div>
+        <div class="desc">External programmatic access with cursor-based pagination, per-key rate limiting, and webhook subscriptions for tenant integration.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#94a9c9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 2 — API Gateway & Authentication ════════ -->
+  <section class="tier t-blue">
+    <div class="tier-label">
+      <span class="tier-num">2</span>
+      <span class="tier-name">API Gateway &amp; Authentication</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🛡️</span>
+        <div class="cname">API Gateway</div>
+        <div class="tech">AWS ALB + AWS WAF · TLS 1.3</div>
+        <div class="desc">TLS termination, request routing across web app, API, and portal. WAF rules for OWASP Top 10. No Kong — ALB is sufficient at this scale.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔐</span>
+        <div class="cname">Authentication Service</div>
+        <div class="tech">Custom Fastify plugin · RS256 JWT</div>
+        <div class="desc">Password auth with bcrypt (R0), SAML/OIDC SSO (R1), MFA via TOTP (R1). JWT carries tenant_id, user_id, and role claims. 1h access / 30d refresh with rotation.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🎭</span>
+        <div class="cname">RBAC Engine</div>
+        <div class="tech">App-layer enforcement + DB check · R0→R3</div>
+        <div class="desc">Four-stage role rollout: Admin+Developer (R0) → +Client (R2) → +PM (R3). Per-request chain: authenticate → resolve tenant → set RLS context → check role → check scope.</div>
+      </div>
+      <div class="card">
+        <span class="icon">⚙️</span>
+        <div class="cname">Config Service</div>
+        <div class="tech">Tenant config table · Redis cache · 5min TTL</div>
+        <div class="desc">Per-tenant settings: custom status labels, priority scales, AI model preferences, feature flags, autonomy policy defaults. Cache invalidated via NATS event.</div>
+      </div>
+      <div class="card">
+        <span class="icon">⚡</span>
+        <div class="cname">WebSocket Gateway</div>
+        <div class="tech">Socket.io on Fastify · ALB WS support · R1</div>
+        <div class="desc">Real-time task board updates, comment streams, AI decision notifications, and user presence per project view. Authenticated via same JWT.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#c4b9a4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 3 — Application Services ════════ -->
+  <section class="tier t-sand">
+    <div class="tier-label">
+      <span class="tier-num">3</span>
+      <span class="tier-name">Application Services — Modular Monolith</span>
+    </div>
+    <div class="tier-sub">Domain Modules</div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">📁</span>
+        <div class="cname">Project Module</div>
+        <div class="tech">Fastify 5 · Drizzle ORM</div>
+        <div class="desc">Project CRUD, NL description storage, WBS baseline snapshots in JSONB, phase management, and composite endpoints for project-with-phases views.</div>
+      </div>
+      <div class="card">
+        <span class="icon">✅</span>
+        <div class="cname">Task Module</div>
+        <div class="tech">Fastify 5 · Drizzle ORM</div>
+        <div class="desc">Full lifecycle with configurable statuses, multiple assignees via junction table, effort tracking, ai_generated + ai_confidence flags, and single-level sub-tasks with parent rollup.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔗</span>
+        <div class="cname">Dependency Module</div>
+        <div class="tech">App-layer DAG traversal</div>
+        <div class="desc">Finish-to-start relationships, circular dependency prevention via DAG traversal (not DB trigger), automatic blocked/unblocked status propagation, and dependency notes.</div>
+      </div>
+      <div class="card">
+        <span class="icon">💭</span>
+        <div class="cname">Comment Module</div>
+        <div class="tech">Per-task threads · client_visible flag</div>
+        <div class="desc">Per-task threads with client_visible boolean for projection layer filtering, edit/delete with "edited" indicator. Feeds embedding pipeline for RAG.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📋</span>
+        <div class="cname">Audit Module</div>
+        <div class="tech">INSERT-only table · Monthly partitions</div>
+        <div class="desc">Immutable audit_log with field-level diffs: entity type/id, old/new values, actor_type (user/ai/system/integration), ai_action_id FK. Partitioned by month at 1M+ rows.</div>
+      </div>
+      <div class="card">
+        <span class="icon">👥</span>
+        <div class="cname">User Module</div>
+        <div class="tech">Tenant-scoped · /users/me/next endpoint</div>
+        <div class="desc">Tenant-scoped user management, AI-curated task prioritization endpoint (/users/me/next), availability tracking, and workload metrics.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🪞</span>
+        <div class="cname">Projection Module</div>
+        <div class="tech">Internal → client-safe transformation · R2</div>
+        <div class="desc">Field-level redaction rules, internal/external classification on tasks and comments, narrative object generation, and approval workflow for client-facing content.</div>
+      </div>
+    </div>
+    <div class="tier-sub">Runtime Stack</div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🟢</span>
+        <div class="cname">Node.js 22 LTS</div>
+        <div class="tech">TypeScript end-to-end</div>
+        <div class="desc">Shared language with Next.js frontend. Single hiring profile. TypeScript types shared via monorepo packages.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🚀</span>
+        <div class="cname">Fastify 5</div>
+        <div class="tech">Plugin architecture · TypeBox validation</div>
+        <div class="desc">Fastest Node.js HTTP framework. Plugin architecture maps cleanly to domain modules. Schema-based request validation via TypeBox.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🗃️</span>
+        <div class="cname">Drizzle ORM</div>
+        <div class="tech">Schema-as-code · Versioned migrations</div>
+        <div class="desc">TypeScript-first ORM that generates readable SQL. Lighter than Prisma, more control than Knex. Versioned migrations for schema evolution.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📦</span>
+        <div class="cname">Turborepo + pnpm</div>
+        <div class="tech">Monorepo workspaces</div>
+        <div class="desc">packages/shared for types/validators, apps/web for Next.js, apps/api for Fastify, apps/ai-worker for async AI processing (R1).</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#a9b396" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 4 — AI Engine ════════ -->
+  <section class="tier t-olive">
+    <div class="tier-label">
+      <span class="tier-num">4</span>
+      <span class="tier-name">AI Engine — The Product</span>
+    </div>
+    <div class="tier-sub">Orchestrator &amp; Governance</div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🧠</span>
+        <div class="cname">AI Orchestrator</div>
+        <div class="tech">7-stage pipeline · TS module (R0) → ECS (R1)</div>
+        <div class="desc">All AI operations flow through this single pipeline: Trigger → Autonomy Check → Context Assembly → Confidence Check → LLM Call → Post-Processing → Disposition. No capability bypasses it.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🎛️</span>
+        <div class="cname">Autonomy Policy Engine</div>
+        <div class="tech">Config-driven rules · Per-tenant · Per-action</div>
+        <div class="desc">Determines whether AI proposes (human approves) or executes autonomously per action type and tenant. Supports shadow mode, quiet hours, and nudge limits (max 2/task/day).</div>
+      </div>
+      <div class="card">
+        <span class="icon">👻</span>
+        <div class="cname">Shadow Mode</div>
+        <div class="tech">Boolean flag · Per tenant + per capability</div>
+        <div class="desc">All AI actions logged but not executed or surfaced. Admins review accuracy in a dedicated dashboard. Trust-building mechanism before enabling live mode.</div>
+      </div>
+    </div>
+    <div class="tier-sub">AI Capabilities</div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🏗️</span>
+        <div class="cname">NL→WBS Generator</div>
+        <div class="tech">Claude Opus 4 · ~5K in / ~3K out · R0</div>
+        <div class="desc">Core product. 5-stage sub-pipeline: domain detection → template selection → RAG enrichment → Opus generation → schema validation. Domain-specific templates for software, data migration, consultancy. 40%+ of R0 AI engineering.</div>
+      </div>
+      <div class="card">
+        <span class="icon">➡️</span>
+        <div class="cname">"What's Next" Engine</div>
+        <div class="tech">Rules (R0) → Claude Sonnet (R1) · ~1K/~500</div>
+        <div class="desc">Per-developer task prioritization. R0: dependency resolved → due date → priority (pure algorithm). R1: LLM-ranked with velocity context and NL explanations.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔍</span>
+        <div class="cname">NL Query Engine</div>
+        <div class="tech">Claude Sonnet 4.5 · ~2K/~1K · p95 &lt;8s · R0</div>
+        <div class="desc">Natural language questions about project state. RAG retrieval from pgvector → context assembly → Sonnet synthesis. Interactive target response time under 8 seconds.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📊</span>
+        <div class="cname">Summary Engine</div>
+        <div class="tech">Claude Sonnet 4.5 · ~3K/~1K · R0/R1</div>
+        <div class="desc">Daily summaries, weekly status reports, and client-facing narratives. Client summaries route through projection layer with mandatory approval before delivery.</div>
+      </div>
+      <div class="card">
+        <span class="icon">⚠️</span>
+        <div class="cname">Risk Predictor</div>
+        <div class="tech">Claude Opus 4 · ~4K/~2K · R1</div>
+        <div class="desc">Pattern analysis of blocker duration, stalled tasks, dependency chain growth, and scope drift vs baseline. Shadow mode for first 2–4 weeks. Outputs risk flags with confidence scores.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🤖</span>
+        <div class="cname">AI PM Agent</div>
+        <div class="tech">Claude Sonnet 4.5 · 15-min loop · R1</div>
+        <div class="desc">Autonomous async agent. Chases overdue updates via Slack DMs, nudges stalled work, proposes escalations. Operates under autonomy policy with quiet hours.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📐</span>
+        <div class="cname">Scope Creep Detector</div>
+        <div class="tech">Claude Sonnet 4.5 · ~3K/~1K · R1</div>
+        <div class="desc">Monitors task additions vs original WBS baseline (JSONB snapshot). Alerts when scope drifts >15% before timeline impact materializes.</div>
+      </div>
+    </div>
+    <div class="tier-sub">Shared AI Infrastructure</div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">📚</span>
+        <div class="cname">Context Assembly Layer</div>
+        <div class="tech">TypeScript module · pgvector cosine · top-k=10</div>
+        <div class="desc">Loads tenant data, retrieves similar historical context via pgvector, aggregates recent NATS events, selects domain-specific prompt template, and enforces per-operation token budget.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔀</span>
+        <div class="cname">LLM Gateway</div>
+        <div class="tech">Anthropic SDK wrapper · Circuit breaker</div>
+        <div class="desc">Model routing (Opus for generation/risk, Sonnet for queries). Retry with exponential backoff + fallback. Rate limiting per tenant. Circuit breaker: 5 failures → 60s open → fallback responses.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📝</span>
+        <div class="cname">Prompt Registry</div>
+        <div class="tech">Versioned YAML · Handlebars templates</div>
+        <div class="desc">Central repository in /prompts/{capability}/v{N}.yaml with context injection and output schema validation. Version-pinned per capability — prompt changes are PR-reviewed like code.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🧪</span>
+        <div class="cname">Evaluation Harness</div>
+        <div class="tech">Golden test sets · Acceptance tracking</div>
+        <div class="desc">Automated quality checks on every prompt version change. Tracks acceptance rate (&lt;60% triggers review), override rate (&gt;40% = miscalibration), and hallucination incidents.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔎</span>
+        <div class="cname">Traceability Pipeline</div>
+        <div class="tech">ai_actions table · Structured logs</div>
+        <div class="desc">Every AI action logged: trigger → context → prompt hash → model output → confidence → disposition → human review → rollback data. Full chain queryable.</div>
+      </div>
+      <div class="card">
+        <span class="icon">💰</span>
+        <div class="cname">Cost Tracker</div>
+        <div class="tech">Redis counters + ai_cost_log table</div>
+        <div class="desc">Per-operation: input/output tokens, USD cost, model, capability, tenant_id. Per-tenant monthly budget caps with pre-flight check. Alerts at 80% and 100% of budget.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#c2adb5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 5 — Event Bus ════════ -->
+  <section class="tier t-mauve">
+    <div class="tier-label">
+      <span class="tier-num">5</span>
+      <span class="tier-name">Event Bus — The Nervous System</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">⚡</span>
+        <div class="cname">NATS JetStream</div>
+        <div class="tech">NATS 2.10+ · 3-node cluster on ECS</div>
+        <div class="desc">Persistent streams with 30-day retention. At-least-once delivery. Dead letter queue per consumer for failed processing. 6 streams, 8 durable consumers. All consumers idempotent.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📡</span>
+        <div class="cname">pm.tasks Stream</div>
+        <div class="tech">7 subjects · Task lifecycle events</div>
+        <div class="desc">Emits created, updated, status_changed, assigned, completed, dependency_resolved, and dependency_blocked. Consumed by AI engine, audit writer, embedding pipeline, and notification router.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📡</span>
+        <div class="cname">pm.ai Stream</div>
+        <div class="tech">5 subjects · AI action lifecycle</div>
+        <div class="desc">Tracks action_proposed, action_approved, action_rejected, action_executed, and confidence_low. Consumed by traceability pipeline, cost tracker, and evaluation harness.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📡</span>
+        <div class="cname">pm.integrations Stream</div>
+        <div class="tech">4 subjects · External signals</div>
+        <div class="desc">Captures git_commit, git_pr_merged, slack_message, and calendar_updated from integration adapters. Consumed by AI adaptive engine and task module for auto-complete on merge.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📡</span>
+        <div class="cname">pm.projects / comments / system</div>
+        <div class="tech">3 additional streams</div>
+        <div class="desc">Project lifecycle and baseline events, comment CRUD for embedding pipeline, and system-level events for config cache invalidation and tenant/user management.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#a8b89c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 6 — Data Layer ════════ -->
+  <section class="tier t-sage">
+    <div class="tier-label">
+      <span class="tier-num">6</span>
+      <span class="tier-name">Data Layer</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🐘</span>
+        <div class="cname">PostgreSQL 16</div>
+        <div class="tech">RDS Multi-AZ · db.r6g.large (R0)</div>
+        <div class="desc">Primary relational store with tenant_id on every table, RLS for tenant isolation, strong FK constraints, JSONB for WBS baselines and configurable fields. Immutable audit_log (INSERT only). Drizzle ORM migrations.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🧲</span>
+        <div class="cname">pgvector</div>
+        <div class="tech">text-embedding-3-small · 1536 dims · IVFFlat</div>
+        <div class="desc">Co-located in RDS for SQL JOINs in RAG queries. Embeddings for tasks, comments, project descriptions. No separate vector DB until p95 search exceeds 100ms at 1M+ rows.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔴</span>
+        <div class="cname">Redis 7</div>
+        <div class="tech">ElastiCache Serverless · AOF persistence</div>
+        <div class="desc">Session storage, per-tenant rate limiting, AI operation queues (BullMQ), real-time presence, config cache, and AI response cache with TTL-based expiration.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🪣</span>
+        <div class="cname">S3</div>
+        <div class="tech">4 buckets · Glacier lifecycle · Cross-region backups</div>
+        <div class="desc">Buckets for uploads, exports, reports, and backups. Versioning enabled. Glacier lifecycle for audit archives >90 days. Cross-region replication on backups bucket.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔎</span>
+        <div class="cname">Full-Text Search</div>
+        <div class="tech">PostgreSQL FTS · tsvector · GIN indexes</div>
+        <div class="desc">Task and project search built on native PostgreSQL full-text search. Avoids Elasticsearch infrastructure. Evaluate upgrade when corpus exceeds 500K documents.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#c9afa5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 7 — Integration Gateway ════════ -->
+  <section class="tier t-rose">
+    <div class="tier-label">
+      <span class="tier-num">7</span>
+      <span class="tier-name">Integration Gateway</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🔀</span>
+        <div class="cname">Git Adapter</div>
+        <div class="tech">GitHub · GitLab · Azure DevOps · Webhooks · R1</div>
+        <div class="desc">Most important signal source. Commit activity is ground truth preventing AI from hallucinating progress. Auto-links commits/PRs to tasks via branch naming. Auto-complete on PR merge when policy allows.</div>
+      </div>
+      <div class="card">
+        <span class="icon">💬</span>
+        <div class="cname">Slack / Teams Adapter</div>
+        <div class="tech">OAuth 2.0 · Events API · R1</div>
+        <div class="desc">Bidirectional. Inbound: slash commands, message mentions. Outbound: AI PM Agent nudges, daily summaries, risk alerts, escalation notifications. App Home tab with project overview.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📅</span>
+        <div class="cname">Calendar Adapter</div>
+        <div class="tech">CalDAV · Google/Outlook OAuth · R1</div>
+        <div class="desc">Team member availability for resource optimization. Milestone meetings auto-created. Sprint planning sessions scheduled based on project cadence.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🪝</span>
+        <div class="cname">Outbound Webhooks</div>
+        <div class="tech">Tenant-configurable · HMAC-SHA256 · R2</div>
+        <div class="desc">Tenants subscribe to event notifications delivered to external URLs. Retry with exponential backoff. Signature verification for secure delivery.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📥</span>
+        <div class="cname">Jira Import</div>
+        <div class="tech">REST API batch migration · R2</div>
+        <div class="desc">One-time inbound migration of projects, tasks, dependencies, and comments. Sales enablement — reduces switching friction for new customers.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#b0a5c4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 8 — Security & AI Safety ════════ -->
+  <section class="tier t-lav">
+    <div class="tier-label">
+      <span class="tier-num">8</span>
+      <span class="tier-name">Security &amp; AI Safety</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🔒</span>
+        <div class="cname">Encryption at Rest</div>
+        <div class="tech">AES-256 via AWS KMS · R0</div>
+        <div class="desc">RDS encrypted storage, S3 server-side encryption, ElastiCache in-transit and at-rest encryption. All data encrypted by default.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔐</span>
+        <div class="cname">Encryption in Transit</div>
+        <div class="tech">TLS 1.3 · All connections · R0</div>
+        <div class="desc">TLS 1.3 on every connection: ALB→services, services→RDS, services→ElastiCache, services→NATS. No unencrypted internal traffic.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🏢</span>
+        <div class="cname">Tenant Isolation</div>
+        <div class="tech">PostgreSQL RLS · JWT claims · R0</div>
+        <div class="desc">Database-enforced via RLS. JWT tenant_id claims set per-request context. Application code physically cannot cross tenant boundaries.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🗝️</span>
+        <div class="cname">Secrets Management</div>
+        <div class="tech">AWS Secrets Manager · Auto-rotation · R0</div>
+        <div class="desc">Database credentials, API keys, JWT signing keys stored and rotated automatically. Never in environment variables or code.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🧱</span>
+        <div class="cname">Immutable Audit Trail</div>
+        <div class="tech">INSERT-only · No UPDATE/DELETE grants · R0</div>
+        <div class="desc">Field-level diffs with actor tracking (user/ai/system/integration). Monthly partitioning. No application-level DELETE or UPDATE permissions on audit_log.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🛡️</span>
+        <div class="cname">AI Safety Controls</div>
+        <div class="tech">PII handling · Prompt injection defense · R1–R2</div>
+        <div class="desc">Client comments redacted before LLM ingestion, emails hashed in logs, input sanitization before context assembly, output validation against expected schema. RAG retrieval scoped by tenant_id in WHERE clause.</div>
+      </div>
+      <div class="card">
+        <span class="icon">✅</span>
+        <div class="cname">SOC 2 Compliance</div>
+        <div class="tech">Type I (R2) · Type II (R3)</div>
+        <div class="desc">Access controls, GitOps change management, data protection, monitoring, incident response. Type II requires 6-month sustained evidence collection with automated AWS Config monitoring.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#c4b5a0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 9 — Deployment & CI/CD ════════ -->
+  <section class="tier t-warm">
+    <div class="tier-label">
+      <span class="tier-num">9</span>
+      <span class="tier-name">Deployment &amp; CI/CD</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">🐳</span>
+        <div class="cname">ECS Fargate — API</div>
+        <div class="tech">R0: 2 tasks (1 vCPU, 2 GB) · Auto-scaling R2</div>
+        <div class="desc">Main API compute. R2: 3–4 tasks with target-tracking auto-scaling at 70% CPU. R3: 2–8 tasks. No EC2 instances to manage.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🤖</span>
+        <div class="cname">ECS Fargate — AI Workers</div>
+        <div class="tech">R0: 1 task · Queue-depth scaling R2 · 4 GB</div>
+        <div class="desc">Separate service for async AI processing. Scales on BullMQ pending queue depth (>50). Larger memory allocation for context assembly.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🌐</span>
+        <div class="cname">ECS Fargate — Next.js</div>
+        <div class="tech">Alongside API on single ALB · R0</div>
+        <div class="desc">Next.js frontend hosted on Fargate for simplicity with shared ALB. Evaluate AWS Amplify Hosting if SSR caching and edge deployment become priorities.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔄</span>
+        <div class="cname">GitHub Actions CI/CD</div>
+        <div class="tech">Trunk-based · PR approval required</div>
+        <div class="desc">Automated pipeline: lint → type-check → unit test → integration test (testcontainers) → build → deploy staging → smoke test → promote to production.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🏗️</span>
+        <div class="cname">AWS CDK (TypeScript)</div>
+        <div class="tech">Same language as stack · Single cdk deploy</div>
+        <div class="desc">TypeScript IaC managing VPC, ALB, ECS, RDS, ElastiCache, S3, IAM, Secrets Manager, and CloudWatch. Higher-level constructs reduce boilerplate. Single cdk deploy for full environment.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📦</span>
+        <div class="cname">ECR</div>
+        <div class="tech">Private registry · Last 10 images retained</div>
+        <div class="desc">Private container registry with lifecycle policy retaining last 10 images per service.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🌍</span>
+        <div class="cname">Route 53 + CloudFront</div>
+        <div class="tech">DNS + CDN · Edge caching</div>
+        <div class="desc">CloudFront for static assets and Next.js edge caching. Route 53 for DNS management. Three environments: dev (single-AZ), staging (mirrors prod), prod (Multi-AZ, encrypted).</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#b5b0a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ TIER 10 — Monitoring & Observability ════════ -->
+  <section class="tier t-stone">
+    <div class="tier-label">
+      <span class="tier-num">10</span>
+      <span class="tier-name">Monitoring &amp; Observability</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">📈</span>
+        <div class="cname">CloudWatch Metrics</div>
+        <div class="tech">Custom dashboards · EMF structured logging</div>
+        <div class="desc">Application metrics (latency, errors, throughput), database metrics (connections, replication lag), and AI metrics (operation latency, token usage, cost per operation, confidence distribution).</div>
+      </div>
+      <div class="card">
+        <span class="icon">📝</span>
+        <div class="cname">CloudWatch Logs</div>
+        <div class="tech">Structured JSON · Logs Insights · 30-day retention</div>
+        <div class="desc">Centralized structured JSON logs from all ECS services. Logs Insights for ad-hoc querying. Log groups per service with 30-day prod / 7-day staging retention.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🔗</span>
+        <div class="cname">AWS X-Ray</div>
+        <div class="tech">Distributed tracing · Fastify middleware</div>
+        <div class="desc">End-to-end request tracing: API → AI Orchestrator → LLM Gateway → Database. Critical for debugging AI operation latency chains.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🐛</span>
+        <div class="cname">Sentry</div>
+        <div class="tech">SaaS · Source maps · Release tracking</div>
+        <div class="desc">Real-time error capture with source maps, breadcrumbs, and release correlation. Frontend error grouping that CloudWatch lacks.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🚨</span>
+        <div class="cname">Alerting</div>
+        <div class="tech">CloudWatch Alarms → SNS → PagerDuty/Slack</div>
+        <div class="desc">Alert rules: circuit breaker open, AI failure rate >10%, budget exceeded, NATS consumer lag >1000, RDS pool >80%, p95 latency >2s, any 5xx spike.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🤖</span>
+        <div class="cname">AI Observability Dashboard</div>
+        <div class="tech">CloudWatch custom · R1</div>
+        <div class="desc">Dedicated dashboard: per-capability latency histograms, per-tenant budget gauges, acceptance/rejection rates, prompt version A/B comparison, circuit breaker and shadow mode status.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-connector">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 4v16M12 20l-4-4M12 20l4-4" stroke="#b5b0a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+
+  <!-- ════════ PHASE 2 / R3 ════════ -->
+  <section class="tier t-stone t-phase2">
+    <div class="tier-label">
+      <span class="tier-num">P2</span>
+      <span class="tier-name">Phase 2 — R3 Future Capabilities</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card">
+        <span class="icon">📄</span>
+        <div class="cname">SOW Generator</div>
+        <div class="tech">Claude Opus 4 · ~8K/~5K · R3</div>
+        <div class="desc">Revenue-generating: generates Statements of Work from historical delivery data. Long-context Opus with template system and approval workflow. The consultancy killer feature.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🧬</span>
+        <div class="cname">Per-Tenant Learning</div>
+        <div class="tech">Fine-tuned context / RAG enrichment · R3</div>
+        <div class="desc">Tenant-scoped model contexts improving WBS, estimation, and risk prediction from each org's own delivery history. The competitive moat.</div>
+      </div>
+      <div class="card">
+        <span class="icon">📊</span>
+        <div class="cname">Estimation Engine</div>
+        <div class="tech">R3</div>
+        <div class="desc">Data-driven effort estimation leveraging historical actuals across tenant delivery history. Improves accuracy over time as more projects complete.</div>
+      </div>
+      <div class="card">
+        <span class="icon">🏢</span>
+        <div class="cname">Enterprise Tier</div>
+        <div class="tech">Schema isolation evaluation · R3</div>
+        <div class="desc">Evaluate schema-per-tenant isolation for enterprise customers with compliance requirements. Single connection pool maintained through schema switching.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ COST SUMMARY ════════ -->
+  <div class="cost-summary">
+    <h3>💵 Monthly Infrastructure Cost Model (AWS)</h3>
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:12px; font-size:0.72rem; font-weight:600; color:#64748b; text-align:center;">
+      <div></div><div>R0 Internal</div><div>R1 Pilot</div><div>R2 (3 Tenants)</div>
+    </div>
+    <div class="cost-grid">
+      <div class="cost-item"><span class="label">ECS Fargate (API + AI + Web)</span><span class="amt">$120 → $400</span></div>
+      <div class="cost-item"><span class="label">RDS PostgreSQL Multi-AZ</span><span class="amt">$95 → $190</span></div>
+      <div class="cost-item"><span class="label">ElastiCache Redis</span><span class="amt">$25 → $100</span></div>
+      <div class="cost-item"><span class="label">NATS 3-Node ECS</span><span class="amt">$60 → $60</span></div>
+      <div class="cost-item"><span class="label">Claude API (AI ops)</span><span class="amt">$30 → $150</span></div>
+      <div class="cost-item"><span class="label">S3 + CloudFront</span><span class="amt">$10 → $30</span></div>
+      <div class="cost-item"><span class="label">Monitoring (CW + Sentry)</span><span class="amt">$30 → $80</span></div>
+      <div class="cost-item"><span class="label">Secrets Manager + misc</span><span class="amt">$10 → $20</span></div>
+    </div>
+    <div class="cost-total">
+      <span>R0 Total: ~$380/mo</span>
+      <span>R2 Total: ~$1,030/mo</span>
+      <span>R3 (10 tenants): ~$2,110/mo</span>
+    </div>
+    <p style="font-size:0.72rem; color:#64748b; margin-top:8px;">R2 gross margin ~78% at $500/tenant/mo. R3 margin ~58% with AI cost sub-linear scaling via caching and prompt optimization.</p>
+  </div>
+
+  <!-- ════════ TIMELINE ════════ -->
+  <div class="timeline-section">
+    <h3>📅 Release-Architecture Alignment (12 Months)</h3>
+    <div class="timeline-grid">
+      <div class="tl-header"></div>
+      <div class="tl-header">M1</div><div class="tl-header">M2</div><div class="tl-header">M3</div>
+      <div class="tl-header">M4</div><div class="tl-header">M5</div><div class="tl-header">M6</div>
+      <div class="tl-header">M7</div><div class="tl-header">M8</div><div class="tl-header">M9</div>
+      <div class="tl-header">M10</div><div class="tl-header">M11</div><div class="tl-header">M12</div>
+
+      <!-- R0 -->
+      <div class="tl-label">Client</div>
+      <div class="tl-cell tl-active-teal">R0</div><div class="tl-cell tl-active-teal">R0</div><div class="tl-cell tl-active-teal">R0</div>
+      <div class="tl-cell tl-active-teal">R1</div><div class="tl-cell tl-active-teal">R1</div><div class="tl-cell tl-active-teal">R1</div>
+      <div class="tl-cell tl-active-teal">R2</div><div class="tl-cell tl-active-teal">R2</div><div class="tl-cell tl-active-teal">R2</div>
+      <div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Gateway / Auth</div>
+      <div class="tl-cell tl-active-blue">R0</div><div class="tl-cell tl-active-blue">R0</div><div class="tl-cell tl-active-blue">R0</div>
+      <div class="tl-cell tl-active-blue">R1</div><div class="tl-cell tl-active-blue">R1</div><div class="tl-cell tl-active-blue">R1</div>
+      <div class="tl-cell tl-active-blue">R2</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-blue">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Application</div>
+      <div class="tl-cell tl-active-sand">R0</div><div class="tl-cell tl-active-sand">R0</div><div class="tl-cell tl-active-sand">R0</div>
+      <div class="tl-cell tl-active-sand">R1</div><div class="tl-cell tl-active-sand">R1</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-sand">R2</div><div class="tl-cell tl-active-sand">R2</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-sand">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">AI Engine</div>
+      <div class="tl-cell tl-active-olive">R0</div><div class="tl-cell tl-active-olive">R0</div><div class="tl-cell tl-active-olive">R0</div>
+      <div class="tl-cell tl-active-olive">R1</div><div class="tl-cell tl-active-olive">R1</div><div class="tl-cell tl-active-olive">R1</div>
+      <div class="tl-cell tl-active-olive">R2</div><div class="tl-cell tl-active-olive">R2</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-olive">R3</div><div class="tl-cell tl-active-olive">R3</div><div class="tl-cell tl-active-olive">R3</div>
+
+      <div class="tl-label">Data Layer</div>
+      <div class="tl-cell tl-active-stone">R0</div><div class="tl-cell tl-active-stone">R0</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-stone">R2</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-stone">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Integrations</div>
+      <div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-rose">R1</div><div class="tl-cell tl-active-rose">R1</div><div class="tl-cell tl-active-rose">R1</div>
+      <div class="tl-cell tl-active-rose">R2</div><div class="tl-cell tl-active-rose">R2</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-rose">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Security</div>
+      <div class="tl-cell tl-active-lav">R0</div><div class="tl-cell tl-active-lav">R0</div><div class="tl-cell tl-active-lav">R0</div>
+      <div class="tl-cell tl-active-lav">R1</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-lav">R2</div><div class="tl-cell tl-active-lav">R2</div><div class="tl-cell tl-active-lav">R2</div>
+      <div class="tl-cell tl-active-lav">R3</div><div class="tl-cell tl-active-lav">R3</div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Deployment</div>
+      <div class="tl-cell tl-active-warm">R0</div><div class="tl-cell tl-active-warm">R0</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-warm">R1</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-warm">R2</div><div class="tl-cell tl-active-warm">R2</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-warm">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+
+      <div class="tl-label">Monitoring</div>
+      <div class="tl-cell tl-active-stone">R0</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-stone">R1</div><div class="tl-cell tl-active-stone">R1</div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-stone">R2</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+      <div class="tl-cell tl-active-stone">R3</div><div class="tl-cell tl-empty"></div><div class="tl-cell tl-empty"></div>
+    </div>
+  </div>
+
+  <!-- ════════ LEGEND ════════ -->
+  <div class="legend">
+    <h3>Legend</h3>
+    <div class="legend-grid">
+      <div class="legend-item"><div class="legend-swatch" style="background:#e6f3f0; border-color:#9ec5bb;"></div>Tier 1 — Client Layer</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#e8eef6; border-color:#94a9c9;"></div>Tier 2 — API Gateway &amp; Auth</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#f0ece4; border-color:#c4b9a4;"></div>Tier 3 — Application Services</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#eef0e6; border-color:#a9b396;"></div>Tier 4 — AI Engine</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#f0eaed; border-color:#c2adb5;"></div>Tier 5 — Event Bus</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#eaefe6; border-color:#a8b89c;"></div>Tier 6 — Data Layer</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#f2ece9; border-color:#c9afa5;"></div>Tier 7 — Integration Gateway</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#edeaf2; border-color:#b0a5c4;"></div>Tier 8 — Security &amp; AI Safety</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#f0ebe3; border-color:#c4b5a0;"></div>Tier 9 — Deployment &amp; CI/CD</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#eae8e4; border-color:#b5b0a8;"></div>Tier 10 — Monitoring &amp; Observability</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#eae8e4; border-color:#b5b0a8; border-style:dashed;"></div>P2 — Phase 2 / R3 Future</div>
+    </div>
+  </div>
+
+  <!-- ════════ FOOTER ════════ -->
+  <footer class="footer">
+    AI-Native PM Tool · Architecture v3.0 · Definitive · AWS-native · Event-driven · Tenant-isolated · Observable AI · Evergreen R0→R3+ · 10 Tiers · 50+ Components
+  </footer>
+
+</div>
+</body>
+</html>

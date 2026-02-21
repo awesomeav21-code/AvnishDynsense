@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+.turbo/
+.env
+.env.local
+.env.*.local
+*.pem
+.DS_Store
+.vscode/
+.idea/
+*.log
+coverage/
+.cache/
+.claude/
