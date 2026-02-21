@@ -169,4 +169,11 @@ export async function authRoutes(app: FastifyInstance) {
       tenantId: user.tenantId,
     };
   });
+
+  // POST /logout
+  app.post("/logout", { preHandler: [authenticate] }, async (request, reply) => {
+    const { sub } = request.jwtPayload;
+    await db.update(users).set({ refreshToken: null }).where(eq(users.id, sub));
+    reply.send({ message: "Logged out" });
+  });
 }

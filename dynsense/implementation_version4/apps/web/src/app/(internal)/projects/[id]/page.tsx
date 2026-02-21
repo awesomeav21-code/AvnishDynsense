@@ -49,6 +49,8 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -67,6 +69,18 @@ export default function ProjectDetailPage() {
     }
     load();
   }, [projectId]);
+
+  async function handleCreateTask() {
+    if (!newTaskTitle.trim()) return;
+    try {
+      const res = await api.createTask({ projectId, title: newTaskTitle });
+      setTasks((prev) => [{ ...res.data, status: "created", priority: "medium", assigneeId: null, dueDate: null, projectId } as Task, ...prev]);
+      setNewTaskTitle("");
+      setShowCreateTask(false);
+    } catch {
+      setError("Failed to create task");
+    }
+  }
 
   if (loading) {
     return (
@@ -134,16 +148,57 @@ export default function ProjectDetailPage() {
 
       {/* Task list */}
       <div>
-        <h2 className="text-lg font-semibold mb-3">Tasks ({tasks.length})</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">Tasks ({tasks.length})</h2>
+          <button
+            onClick={() => setShowCreateTask(true)}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
+          >
+            + New Task
+          </button>
+        </div>
 
-        {tasks.length === 0 ? (
+        {/* Create task inline form */}
+        {showCreateTask && (
+          <div className="bg-white rounded-lg border p-4 mb-4 space-y-3">
+            <input
+              type="text"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="Task title"
+              className="w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateTask}
+                disabled={!newTaskTitle.trim()}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => { setShowCreateTask(false); setNewTaskTitle(""); }}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tasks.length === 0 && !showCreateTask ? (
           <div className="text-sm text-gray-500 bg-white rounded-lg border p-6 text-center">
             No tasks in this project yet.
           </div>
         ) : (
           <div className="bg-white rounded-lg border divide-y">
             {tasks.map((task) => (
-              <div key={task.id} className="flex items-center gap-4 px-4 py-3">
+              <Link
+                key={task.id}
+                href={`/tasks/${task.id}`}
+                className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 truncate">
                     {task.title}
@@ -160,7 +215,7 @@ export default function ProjectDetailPage() {
                     {new Date(task.dueDate).toLocaleDateString()}
                   </span>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
         )}

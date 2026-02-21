@@ -7,6 +7,14 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { authRoutes } from "./routes/auth.js";
 import { projectRoutes } from "./routes/projects.js";
 import { taskRoutes } from "./routes/tasks.js";
+import { userRoutes } from "./routes/users.js";
+import { commentRoutes } from "./routes/comments.js";
+import { checklistRoutes } from "./routes/checklists.js";
+import { dependencyRoutes } from "./routes/dependencies.js";
+import { assignmentRoutes } from "./routes/assignments.js";
+import { auditRoutes } from "./routes/audit.js";
+import { configRoutes } from "./routes/config.js";
+import { aiRoutes } from "./routes/ai.js";
 import type { Env } from "./config/env.js";
 
 declare module "fastify" {
@@ -48,14 +56,17 @@ export async function buildApp(env: Env) {
   app.register(async (api) => {
     api.get("/", async () => ({ message: "Dynsense API v1" }));
 
-    // Auth: /api/v1/auth/*
     api.register(authRoutes, { prefix: "/auth" });
-
-    // Projects: /api/v1/projects/*
     api.register(projectRoutes, { prefix: "/projects" });
-
-    // Tasks: /api/v1/tasks/*
     api.register(taskRoutes, { prefix: "/tasks" });
+    api.register(userRoutes, { prefix: "/users" });
+    api.register(commentRoutes, { prefix: "/comments" });
+    api.register(checklistRoutes, { prefix: "/checklists" });
+    api.register(dependencyRoutes, { prefix: "/dependencies" });
+    api.register(assignmentRoutes, { prefix: "/assignments" });
+    api.register(auditRoutes, { prefix: "/audit" });
+    api.register(configRoutes, { prefix: "/config" });
+    api.register(aiRoutes, { prefix: "/ai" });
   }, { prefix: "/api/v1" });
 
   return app;

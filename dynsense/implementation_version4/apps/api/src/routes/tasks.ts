@@ -144,4 +144,21 @@ export async function taskRoutes(app: FastifyInstance) {
 
     return { data: rows };
   });
+
+  // DELETE /:id — soft delete task
+  app.delete("/:id", async (request, reply) => {
+    const { tenantId } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+
+    const existing = await db.query.tasks.findFirst({
+      where: and(eq(tasks.id, id), eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt)),
+    });
+    if (!existing) throw AppError.notFound("Task not found");
+
+    await db.update(tasks)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(tasks.id, id), eq(tasks.tenantId, tenantId)));
+
+    reply.status(204).send();
+  });
 }

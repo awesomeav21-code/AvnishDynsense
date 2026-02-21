@@ -21,7 +21,7 @@ class ApiClient {
     localStorage.removeItem("refreshToken");
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -133,11 +133,144 @@ class ApiClient {
     return this.request<{ data: Array<{ status: string; count: number }> }>(`/tasks/stats${qs}`);
   }
 
+  getTask(id: string) {
+    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
+  }
+
+  createTask(data: { projectId: string; title: string; description?: string; priority?: string; dueDate?: string; estimatedEffort?: number }) {
+    return this.request<{ data: { id: string; title: string } }>("/tasks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateTask(id: string, data: { title?: string; description?: string; priority?: string; dueDate?: string; estimatedEffort?: number }) {
+    return this.request(`/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
   updateTaskStatus(id: string, status: string) {
     return this.request(`/tasks/${id}/status`, {
       method: "POST",
       body: JSON.stringify({ status }),
     });
+  }
+
+  deleteTask(id: string) {
+    return this.request(`/tasks/${id}`, { method: "DELETE" });
+  }
+
+  // Comments
+  getComments(taskId: string) {
+    return this.request<{ data: Array<{ id: string; body: string; authorId: string; createdAt: string }> }>(`/comments/task/${taskId}`);
+  }
+
+  addComment(taskId: string, body: string) {
+    return this.request<{ data: { id: string; body: string; authorId: string; createdAt: string } }>("/comments", {
+      method: "POST",
+      body: JSON.stringify({ taskId, body }),
+    });
+  }
+
+  // Checklists
+  getChecklists(taskId: string) {
+    return this.request<{ data: Array<{ id: string; title: string; items: Array<{ id: string; label: string; completed: boolean }>; completionPercent: number }> }>(`/checklists/task/${taskId}`);
+  }
+
+  createChecklist(taskId: string, title: string) {
+    return this.request<{ data: { id: string; title: string } }>("/checklists", {
+      method: "POST",
+      body: JSON.stringify({ taskId, title }),
+    });
+  }
+
+  addChecklistItem(checklistId: string, label: string) {
+    return this.request<{ data: { id: string; label: string; completed: boolean } }>(`/checklists/${checklistId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    });
+  }
+
+  toggleChecklistItem(itemId: string, completed: boolean) {
+    return this.request(`/checklists/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ completed }),
+    });
+  }
+
+  // Assignments
+  getAssignments(taskId: string) {
+    return this.request<{ data: Array<{ userId: string; userName: string; userEmail: string; role: string; assignedAt: string }> }>(`/assignments/task/${taskId}`);
+  }
+
+  assignTask(taskId: string, userId: string) {
+    return this.request(`/assignments/task/${taskId}`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
+  }
+
+  // Dependencies
+  getDependencies(taskId: string) {
+    return this.request<{ data: Array<{ id: string; blockerTaskId: string; blockedTaskId: string; type: string }> }>(`/dependencies/task/${taskId}`);
+  }
+
+  addDependency(blockerTaskId: string, blockedTaskId: string) {
+    return this.request("/dependencies", {
+      method: "POST",
+      body: JSON.stringify({ blockerTaskId, blockedTaskId }),
+    });
+  }
+
+  // Users
+  getUsers() {
+    return this.request<{ data: Array<{ id: string; name: string; email: string; role: string; status: string }> }>("/users");
+  }
+
+  // Audit
+  getAuditLog(params?: { entityType?: string; entityId?: string; limit?: number; offset?: number }) {
+    const query = new URLSearchParams();
+    if (params?.entityType) query.set("entityType", params.entityType);
+    if (params?.entityId) query.set("entityId", params.entityId);
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return this.request<{ data: Array<{ id: string; action: string; entityType: string; entityId: string; userId: string; createdAt: string }> }>(`/audit${qs ? `?${qs}` : ""}`);
+  }
+
+  // AI
+  executeAi(capability: string, input: Record<string, unknown>, sessionId?: string) {
+    return this.request<{ data: { id: string; capability: string; status: string; disposition: string; output: unknown; confidence: string | null; createdAt: string } }>("/ai/execute", {
+      method: "POST",
+      body: JSON.stringify({ capability, input, sessionId }),
+    });
+  }
+
+  getAiActions(params?: { status?: string; capability?: string; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.capability) query.set("capability", params.capability);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.request<{ data: Array<{ id: string; capability: string; status: string; disposition: string; output: unknown; confidence: string | null; input: unknown; createdAt: string; updatedAt: string }> }>(`/ai/actions${qs ? `?${qs}` : ""}`);
+  }
+
+  getAiAction(id: string) {
+    return this.request<{ data: { id: string; capability: string; status: string; disposition: string; output: unknown; confidence: string | null; input: unknown; createdAt: string; updatedAt: string; reviewedBy: string | null } }>(`/ai/actions/${id}`);
+  }
+
+  reviewAiAction(id: string, action: "approve" | "reject" | "edit", editedOutput?: Record<string, unknown>) {
+    return this.request<{ data: { id: string; status: string } }>(`/ai/actions/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action, editedOutput }),
+    });
+  }
+
+  // Logout
+  logout() {
+    return this.request("/auth/logout", { method: "POST" });
   }
 }
 

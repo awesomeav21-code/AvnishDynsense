@@ -80,4 +80,21 @@ export async function projectRoutes(app: FastifyInstance) {
 
     return { data: updated };
   });
+
+  // DELETE /:id — soft delete project
+  app.delete("/:id", async (request, reply) => {
+    const { tenantId } = request.jwtPayload;
+    const { id } = projectIdParamSchema.parse(request.params);
+
+    const existing = await db.query.projects.findFirst({
+      where: and(eq(projects.id, id), eq(projects.tenantId, tenantId), isNull(projects.deletedAt)),
+    });
+    if (!existing) throw AppError.notFound("Project not found");
+
+    await db.update(projects)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(projects.id, id), eq(projects.tenantId, tenantId)));
+
+    reply.status(204).send();
+  });
 }
