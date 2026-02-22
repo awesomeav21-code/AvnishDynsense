@@ -13,10 +13,16 @@ const navItems = [
   { label: "Kanban", href: "/kanban", icon: "kanban" },
   { label: "Calendar", href: "/calendar", icon: "calendar" },
   { label: "Table View", href: "/table-view", icon: "table" },
+  { label: "Timeline", href: "/timeline", icon: "calendar" },
+  { label: "Dependencies", href: "/dependencies", icon: "plug" },
+  { label: "Portfolio", href: "/portfolio", icon: "grid" },
   { label: "AI Review", href: "/ai-review", icon: "ai" },
+  { label: "AI Sessions", href: "/ai-sessions", icon: "ai" },
+  { label: "Notifications", href: "/notifications", icon: "scroll" },
   { label: "Team", href: "/team", icon: "users" },
   { label: "Integrations", href: "/integrations", icon: "plug" },
   { label: "Settings", href: "/settings", icon: "settings" },
+  { label: "Custom Fields", href: "/settings/custom-fields", icon: "settings" },
   { label: "Audit Log", href: "/audit", icon: "scroll" },
 ];
 

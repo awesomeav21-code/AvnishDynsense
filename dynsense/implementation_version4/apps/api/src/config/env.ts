@@ -3,8 +3,8 @@ import { z } from "zod";
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
-  NATS_URL: z.string(),
+  REDIS_URL: z.string().url().optional().default("redis://localhost:6379"),
+  NATS_URL: z.string().optional().default("nats://localhost:4222"),
   API_PORT: z.coerce.number().default(3001),
   API_HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

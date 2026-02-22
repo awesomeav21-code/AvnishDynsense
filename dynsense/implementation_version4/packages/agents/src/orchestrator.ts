@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { eq, and } from "drizzle-orm";
 import type { Database } from "@dynsense/db";
-import { tenantConfigs } from "@dynsense/db";
+import { tenantConfigs, aiSessions } from "@dynsense/db";
 import type { AiCapability, AiDisposition } from "@dynsense/shared";
 import { ALL_SUBAGENTS, AI_CONFIDENCE_THRESHOLD } from "@dynsense/shared";
 
@@ -59,6 +59,17 @@ interface AgentConfig {
   allowedMcpServers: string[];
   systemPrompt: string;
 }
+
+// FR-361: Retry configuration with exponential backoff
+const LLM_MAX_RETRIES = 3;
+const LLM_BASE_DELAY_MS = 1000;
+
+// FR-362: Token budget per model (context window limits)
+const TOKEN_BUDGETS: Record<string, number> = {
+  "claude-sonnet-4-20250514": 180_000, // 200k window, leave headroom
+  "claude-opus-4-20250514": 180_000,
+};
+const DEFAULT_TOKEN_BUDGET = 180_000;
 
 // ---------------------------------------------------------------------------
 // Capability → Agent config mapping
@@ -152,9 +163,11 @@ export class AIOrchestrator {
       fn: (ctx: HookContext) => Promise<HookResult>;
     }> = [
       { name: "tenant-isolator", fn: (ctx) => tenantIsolator(ctx) },
-      { name: "autonomy-enforcer", fn: (ctx) => autonomyEnforcer(ctx) },
+      { name: "autonomy-enforcer", fn: (ctx) => autonomyEnforcer(ctx, this.db) },
       { name: "rate-limiter", fn: (ctx) => rateLimiter(ctx, this.db) },
     ];
+
+    let remainingBudgetUsd: number | undefined;
 
     for (const hook of preHooks) {
       const result = await hook.fn(hookCtx);
@@ -179,6 +192,11 @@ export class AIOrchestrator {
         };
       }
 
+      // Capture remaining budget from rate-limiter for pre-flight check
+      if (hook.name === "rate-limiter" && "remainingBudgetUsd" in result) {
+        remainingBudgetUsd = (result as { remainingBudgetUsd?: number }).remainingBudgetUsd;
+      }
+
       // Merge modified inputs from hooks
       if (result.modifiedInput) {
         Object.assign(hookCtx.toolInput, result.modifiedInput);
@@ -187,12 +205,69 @@ export class AIOrchestrator {
 
     // -----------------------------------------------------------------------
     // Stage 3: CONTEXT ASSEMBLY — Build prompt from input + agent systemPrompt
-    // (RAG stub is acceptable for R0)
+    // FR-3011: Inject multi-turn session context for NL queries
     // -----------------------------------------------------------------------
-    const userMessage = this.buildUserMessage(input.capability, hookCtx.toolInput);
+    let sessionContext: Record<string, unknown> | null = null;
+    if (input.sessionId && input.capability === "nl_query") {
+      try {
+        const sessionRows = await this.db
+          .select()
+          .from(aiSessions)
+          .where(
+            and(
+              eq(aiSessions.id, input.sessionId),
+              eq(aiSessions.tenantId, input.tenantId),
+            ),
+          )
+          .limit(1);
+        if (sessionRows[0]?.state) {
+          sessionContext = sessionRows[0].state as Record<string, unknown>;
+        }
+      } catch { /* session lookup is non-blocking */ }
+    }
+
+    const userMessage = this.buildUserMessage(
+      input.capability,
+      hookCtx.toolInput,
+      sessionContext,
+    );
+
+    // -----------------------------------------------------------------------
+    // FR-362: Token budget enforcement — truncate prompt if over budget
+    // -----------------------------------------------------------------------
+    const modelId = MODEL_MAP[agentConfig.model] ?? MODEL_MAP["sonnet"]!;
+    const tokenBudget = TOKEN_BUDGETS[modelId] ?? DEFAULT_TOKEN_BUDGET;
+    // Rough estimate: 1 token ≈ 4 chars. Reserve 4096 for output.
+    const maxInputChars = (tokenBudget - 4096) * 4;
+    const truncatedMessage = userMessage.length > maxInputChars
+      ? userMessage.slice(0, maxInputChars) + "\n\n[Context truncated to fit token budget]"
+      : userMessage;
+
+    // -----------------------------------------------------------------------
+    // FR-307: Pre-flight budget check — estimate cost and block if over cap
+    // -----------------------------------------------------------------------
+    if (remainingBudgetUsd !== undefined) {
+      const estimatedInputTokens = Math.ceil(truncatedMessage.length / 4);
+      const estimatedOutputTokens = 4096; // max_tokens
+      const estimatedCost = this.estimateCost(modelId, estimatedInputTokens, estimatedOutputTokens);
+
+      if (estimatedCost > remainingBudgetUsd) {
+        return {
+          aiActionId,
+          capability: input.capability,
+          disposition,
+          status: "blocked_budget",
+          output: {
+            error: `Insufficient daily budget: estimated $${estimatedCost.toFixed(2)}, remaining $${remainingBudgetUsd.toFixed(2)}`,
+          },
+          confidence: null,
+        };
+      }
+    }
 
     // -----------------------------------------------------------------------
     // Stage 4 & 5: LLM CALL — Call Claude API via Anthropic SDK
+    // FR-361: Retry with exponential backoff (3 attempts, model fallback)
     // Falls back to stub if ANTHROPIC_API_KEY is not configured
     // -----------------------------------------------------------------------
     let llmOutput: Record<string, unknown> | null = null;
@@ -201,47 +276,69 @@ export class AIOrchestrator {
     let status = "proposed";
 
     if (this.client) {
-      try {
-        const modelId = MODEL_MAP[agentConfig.model] ?? MODEL_MAP["sonnet"]!;
+      // FR-361: Models to try — primary first, then fallback
+      const modelsToTry = [modelId];
+      if (modelId.includes("opus")) {
+        modelsToTry.push(MODEL_MAP["sonnet"]!);
+      }
 
-        const response = await this.client.messages.create({
-          model: modelId,
-          max_tokens: 4096,
-          system: agentConfig.systemPrompt,
-          messages: [{ role: "user", content: userMessage }],
-        });
+      let lastError: string | null = null;
+      let succeeded = false;
 
-        // Extract text content from response
-        const textBlocks = response.content.filter(
-          (block) => block.type === "text",
-        );
-        const rawText = textBlocks.map((b) => {
-          if (b.type === "text") return b.text;
-          return "";
-        }).join("\n");
+      for (const currentModel of modelsToTry) {
+        if (succeeded) break;
 
-        // Stage 6: POST-PROCESSING — Parse structured output
-        const parseResult = this.parseOutput(input.capability, rawText);
-        llmOutput = parseResult.output;
-        confidence = parseResult.confidence;
+        for (let attempt = 0; attempt < LLM_MAX_RETRIES; attempt++) {
+          try {
+            const response = await this.client.messages.create({
+              model: currentModel,
+              max_tokens: 4096,
+              system: agentConfig.systemPrompt,
+              messages: [{ role: "user", content: truncatedMessage }],
+            });
 
-        // Track token usage for cost tracking
-        costData = {
-          model: modelId,
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          costUsd: this.estimateCost(
-            modelId,
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-          ),
-        };
+            // Extract text content from response
+            const textBlocks = response.content.filter(
+              (block) => block.type === "text",
+            );
+            const rawText = textBlocks.map((b) => {
+              if (b.type === "text") return b.text;
+              return "";
+            }).join("\n");
 
-        turnCount = 1;
-      } catch (err: unknown) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Unknown LLM error";
-        llmOutput = { error: errorMessage, fallback: true };
+            // Stage 6: POST-PROCESSING — Parse structured output
+            const parseResult = this.parseOutput(input.capability, rawText);
+            llmOutput = parseResult.output;
+            confidence = parseResult.confidence;
+
+            // Track token usage for cost tracking
+            costData = {
+              model: currentModel,
+              inputTokens: response.usage.input_tokens,
+              outputTokens: response.usage.output_tokens,
+              costUsd: this.estimateCost(
+                currentModel,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+              ),
+            };
+
+            turnCount = 1;
+            succeeded = true;
+            break; // Success — exit retry loop
+          } catch (err: unknown) {
+            lastError = err instanceof Error ? err.message : "Unknown LLM error";
+            // Exponential backoff before retry
+            if (attempt < LLM_MAX_RETRIES - 1) {
+              const delay = LLM_BASE_DELAY_MS * Math.pow(2, attempt);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+      }
+
+      if (!succeeded) {
+        llmOutput = { error: lastError ?? "LLM call failed after retries", fallback: true };
         confidence = 0.0;
         status = "failed";
       }
@@ -254,9 +351,14 @@ export class AIOrchestrator {
 
     // -----------------------------------------------------------------------
     // Stage 4 (post-LLM): CONFIDENCE CHECK — Compare against threshold
+    // FR-343: Apply capability-specific fallback strategies for low confidence
     // -----------------------------------------------------------------------
+    let fallbackUsed: string | null = null;
     if (confidence < AI_CONFIDENCE_THRESHOLD && status !== "failed") {
-      status = "proposed"; // Low confidence forces proposal for human review
+      const fallback = this.handleLowConfidence(input.capability, llmOutput);
+      status = fallback.status;
+      llmOutput = fallback.output;
+      fallbackUsed = fallback.fallbackUsed;
     }
 
     // -----------------------------------------------------------------------
@@ -294,7 +396,7 @@ export class AIOrchestrator {
         hookCtx,
         "orchestrator",
         "PostToolUse",
-        { allowed: true, reason: `status=${status}, confidence=${confidence}` },
+        { allowed: true, reason: `status=${status}, confidence=${confidence}${fallbackUsed ? `, fallback=${fallbackUsed}` : ""}` },
         this.db,
       ).catch(() => {
         /* non-blocking */
@@ -308,7 +410,9 @@ export class AIOrchestrator {
     );
 
     postHookPromises.push(
-      notificationHook(hookCtx, disposition).catch(() => {
+      notificationHook(hookCtx, disposition, this.db, {
+        notificationType: input.capability === "ai_pm_agent" ? "nudge" : "proposal",
+      }).catch(() => {
         /* non-blocking */
       }),
     );
@@ -340,6 +444,16 @@ export class AIOrchestrator {
       output: llmOutput,
       confidence,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // FR-3009: Execute multiple capabilities in parallel (subagent parallelization)
+  // -------------------------------------------------------------------------
+  async executeParallel(
+    inputs: OrchestratorInput[],
+  ): Promise<OrchestratorResult[]> {
+    const promises = inputs.map((input) => this.execute(input));
+    return Promise.all(promises);
   }
 
   // -------------------------------------------------------------------------
@@ -415,6 +529,7 @@ export class AIOrchestrator {
   private buildUserMessage(
     capability: AiCapability,
     input: Record<string, unknown>,
+    sessionContext?: Record<string, unknown> | null,
   ): string {
     switch (capability) {
       case "wbs_generator":
@@ -442,16 +557,24 @@ export class AIOrchestrator {
           "Return as JSON: { items: [{ priority: 'high'|'medium'|'low', task: string, reason: string }] }",
         ].join("\n");
 
-      case "nl_query":
-        return [
+      case "nl_query": {
+        const parts = [
           "Answer the following question about the project:",
           "",
           `Question: ${String(input["query"] ?? "No query provided")}`,
           "",
           `Project context: ${JSON.stringify(input["context"] ?? {})}`,
-          "",
-          "Return as JSON: { answer: string, sources: string[], confidence: number }",
-        ].join("\n");
+        ];
+        // FR-3011: Inject multi-turn session context for conversational continuity
+        if (sessionContext?.lastOutput) {
+          parts.push("");
+          parts.push(`Previous conversation context: ${JSON.stringify(sessionContext.lastOutput)}`);
+          parts.push("Use the above context to maintain conversational continuity.");
+        }
+        parts.push("");
+        parts.push("Return as JSON: { answer: string, sources: string[], confidence: number }");
+        return parts.join("\n");
+      }
 
       case "summary_writer":
         return [
@@ -499,6 +622,59 @@ export class AIOrchestrator {
       default:
         return `Process the following input for capability '${capability}':\n\n${JSON.stringify(input)}`;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // FR-343: Confidence fallback strategies per capability
+  // -------------------------------------------------------------------------
+  private handleLowConfidence(
+    capability: AiCapability,
+    output: Record<string, unknown> | null,
+  ): { status: string; output: Record<string, unknown> | null; fallbackUsed: string } {
+    const strategy = this.getCapabilityFallbackStrategy(capability);
+
+    switch (strategy) {
+      case "use_template": {
+        // For WBS/summary: use a safe default template instead of low-confidence output
+        const template = this.generateStubOutput(capability, {});
+        return {
+          status: "executed",
+          output: { ...template, _lowConfidenceFallback: true, _fallbackStrategy: "use_template" },
+          fallbackUsed: "use_template",
+        };
+      }
+      case "reduce_scope": {
+        // For nl_query: return the output but flag it as low confidence
+        const reduced = output ? { ...output, _reducedScope: true } : output;
+        return { status: "proposed", output: reduced, fallbackUsed: "reduce_scope" };
+      }
+      case "skip":
+        return {
+          status: "skipped",
+          output: { message: "Skipped due to low confidence", _fallbackStrategy: "skip" },
+          fallbackUsed: "skip",
+        };
+      case "ask_human":
+      default:
+        return {
+          status: "proposed_low_confidence",
+          output: output ? { ...output, _requiresHumanReview: true } : output,
+          fallbackUsed: "ask_human",
+        };
+    }
+  }
+
+  private getCapabilityFallbackStrategy(capability: string): string {
+    const strategies: Record<string, string> = {
+      wbs_generator: "use_template",
+      whats_next: "ask_human",
+      nl_query: "reduce_scope",
+      summary_writer: "use_template",
+      risk_predictor: "ask_human",
+      ai_pm_agent: "skip",
+      scope_detector: "ask_human",
+    };
+    return strategies[capability] ?? "ask_human";
   }
 
   // -------------------------------------------------------------------------

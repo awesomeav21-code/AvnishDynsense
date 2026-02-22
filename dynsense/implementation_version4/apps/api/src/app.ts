@@ -24,6 +24,14 @@ import { featureFlagRoutes } from "./routes/feature-flags.js";
 import { recurringTaskRoutes } from "./routes/recurring-tasks.js";
 import { reminderRoutes } from "./routes/reminders.js";
 import { cronRoutes } from "./routes/cron.js";
+import { phaseRoutes } from "./routes/phases.js";
+import { aiEvalRoutes } from "./routes/ai-eval.js";
+import { ssoRoutes } from "./routes/sso.js";
+import { slackRoutes } from "./routes/slack.js";
+import { githubRoutes } from "./routes/github.js";
+import { customFieldRoutes } from "./routes/custom-fields.js";
+import { templateRoutes } from "./routes/templates.js";
+import { customToolRoutes } from "./routes/custom-tools.js";
 import type { Env } from "./config/env.js";
 
 declare module "fastify" {
@@ -85,6 +93,14 @@ export async function buildApp(env: Env) {
     api.register(recurringTaskRoutes, { prefix: "/recurring-tasks" });
     api.register(reminderRoutes, { prefix: "/reminders" });
     api.register(cronRoutes, { prefix: "/cron" });
+    api.register(phaseRoutes, { prefix: "/phases" });
+    api.register(aiEvalRoutes, { prefix: "/ai-eval" });
+    api.register(ssoRoutes, { prefix: "/sso" });
+    api.register(slackRoutes, { prefix: "/slack" });
+    api.register(githubRoutes, { prefix: "/github" });
+    api.register(customFieldRoutes, { prefix: "/custom-fields" });
+    api.register(templateRoutes, { prefix: "/templates" });
+    api.register(customToolRoutes, { prefix: "/custom-tools" });
   }, { prefix: "/api/v1" });
 
   return app;

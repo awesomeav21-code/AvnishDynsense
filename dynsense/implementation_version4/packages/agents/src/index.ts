@@ -36,3 +36,7 @@ export type {
 // Permissions
 export { evaluatePermission } from "./permissions/permission-chain.js";
 export type { PermissionDecision, PermissionEvalInput } from "./permissions/permission-chain.js";
+
+// Golden test fixtures
+export { goldenFixtures } from "./fixtures/golden-tests.js";
+export type { GoldenFixture } from "./fixtures/golden-tests.js";

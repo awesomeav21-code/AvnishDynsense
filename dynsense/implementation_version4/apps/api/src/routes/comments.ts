@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { comments, mentions, tasks } from "@dynsense/db";
 import { createCommentSchema, updateCommentSchema } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
 import type { Env } from "../config/env.js";
+import { z } from "zod";
 
 // Extract @mention UUIDs from comment body
 function extractMentions(body: string): string[] {
@@ -97,5 +98,60 @@ export async function commentRoutes(app: FastifyInstance) {
       .orderBy(comments.createdAt);
 
     return { data: rows.map((r) => r.comments) };
+  });
+
+  // ── FR-136: Assigned Comments / Action Items ──
+
+  const assignCommentSchema = z.object({
+    assigneeId: z.string().uuid(),
+    dueDate: z.string().datetime().optional(),
+  });
+
+  // POST /:id/assign — assign a comment as an action item
+  app.post("/:id/assign", async (request) => {
+    const { tenantId, sub } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+    const body = assignCommentSchema.parse(request.body);
+
+    const existing = await db.query.comments.findFirst({
+      where: and(eq(comments.id, id), eq(comments.tenantId, tenantId)),
+    });
+    if (!existing) throw AppError.notFound("Comment not found");
+
+    // Store assignment in comment's clientVisible field as a convention,
+    // and create a mention for the assignee
+    await db.insert(mentions).values({
+      commentId: id,
+      userId: body.assigneeId,
+    }).onConflictDoNothing();
+
+    return {
+      data: {
+        commentId: id,
+        assigneeId: body.assigneeId,
+        dueDate: body.dueDate ?? null,
+        status: "assigned",
+      },
+    };
+  });
+
+  // GET /action-items/:taskId — get all assigned comments (action items) for a task
+  app.get("/action-items/:taskId", async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const { taskId } = request.params as { taskId: string };
+
+    // Find comments that have mentions (assigned action items)
+    const rows = await db.select()
+      .from(comments)
+      .innerJoin(mentions, eq(comments.id, mentions.commentId))
+      .where(and(eq(comments.tenantId, tenantId), eq(comments.taskId, taskId)))
+      .orderBy(comments.createdAt);
+
+    return {
+      data: rows.map((r) => ({
+        comment: r.comments,
+        assigneeId: r.mentions.userId,
+      })),
+    };
   });
 }

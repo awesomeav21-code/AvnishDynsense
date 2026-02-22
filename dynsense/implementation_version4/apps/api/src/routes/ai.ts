@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, desc } from "drizzle-orm";
-import { aiActions, aiSessions, aiHookLog } from "@dynsense/db";
+import { aiActions, aiSessions, aiHookLog, projects } from "@dynsense/db";
 import { aiExecuteSchema, aiReviewActionSchema } from "@dynsense/shared";
 import { AIOrchestrator } from "@dynsense/agents";
 import { AppError } from "../utils/errors.js";
@@ -68,6 +68,22 @@ export async function aiRoutes(app: FastifyInstance) {
       })
       .where(eq(aiActions.id, action!.id))
       .returning();
+
+    // FR-112: Persist WBS baseline to project when WBS is generated
+    if (
+      body.capability === "wbs_generator" &&
+      result.output &&
+      result.status !== "failed"
+    ) {
+      const projectId = body.input["projectId"] as string | undefined;
+      if (projectId) {
+        await db
+          .update(projects)
+          .set({ wbsBaseline: result.output, updatedAt: new Date() })
+          .where(and(eq(projects.id, projectId), eq(projects.tenantId, tenantId)))
+          .catch(() => { /* non-blocking — WBS storage is best-effort */ });
+      }
+    }
 
     reply.status(201).send({ data: updated });
   });
@@ -314,5 +330,60 @@ export async function aiRoutes(app: FastifyInstance) {
       .limit(20);
 
     return { data: rows };
+  });
+
+  // GET /sessions/:id — session detail with actions and hook log
+  app.get("/sessions/:id", async (request) => {
+    const { tenantId, sub: userId } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+
+    const session = await db.query.aiSessions.findFirst({
+      where: and(eq(aiSessions.id, id), eq(aiSessions.tenantId, tenantId), eq(aiSessions.userId, userId)),
+    });
+
+    if (!session) throw AppError.notFound("Session not found");
+
+    // Fetch all actions in this session
+    const actions = await db.select().from(aiActions)
+      .where(and(eq(aiActions.sessionId, id), eq(aiActions.tenantId, tenantId)))
+      .orderBy(desc(aiActions.createdAt));
+
+    // Fetch hook logs for those actions
+    const actionIds = actions.map((a) => a.id);
+    let hooks: typeof aiHookLog.$inferSelect[] = [];
+    if (actionIds.length > 0) {
+      const allHooks = await db.select().from(aiHookLog)
+        .where(eq(aiHookLog.tenantId, tenantId))
+        .orderBy(desc(aiHookLog.createdAt));
+      hooks = allHooks.filter((h) => h.aiActionId !== null && actionIds.includes(h.aiActionId));
+    }
+
+    return {
+      data: {
+        session,
+        actions: actions.map((a) => ({
+          ...a,
+          hooks: hooks.filter((h) => h.aiActionId === a.id),
+        })),
+      },
+    };
+  });
+
+  // POST /sessions/:id/terminate — terminate an active session
+  app.post("/sessions/:id/terminate", async (request) => {
+    const { tenantId, sub: userId } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+
+    const session = await db.query.aiSessions.findFirst({
+      where: and(eq(aiSessions.id, id), eq(aiSessions.tenantId, tenantId), eq(aiSessions.userId, userId)),
+    });
+
+    if (!session) throw AppError.notFound("Session not found");
+
+    await db.update(aiSessions)
+      .set({ status: "terminated", updatedAt: new Date() })
+      .where(eq(aiSessions.id, id));
+
+    return { data: { id, status: "terminated" } };
   });
 }

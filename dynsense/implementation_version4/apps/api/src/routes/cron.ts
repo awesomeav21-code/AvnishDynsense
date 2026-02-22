@@ -4,8 +4,9 @@
 // Ref: FR-604 — Cross-project dependency flagging
 // Ref: FR-607 — Scope creep detection against WBS baseline
 import type { FastifyInstance } from "fastify";
-import { eq, and, lt, desc, isNull, ne, sql } from "drizzle-orm";
-import { tasks, projects, aiActions, notifications, taskDependencies } from "@dynsense/db";
+import { eq, and, lt, desc, isNull, ne, sql, gte, count } from "drizzle-orm";
+import { tasks, projects, aiActions, notifications, taskDependencies, tenantConfigs } from "@dynsense/db";
+import { AI_MAX_NUDGES_PER_TASK_PER_DAY } from "@dynsense/shared";
 import { AIOrchestrator } from "@dynsense/agents";
 import { authenticate } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -69,26 +70,76 @@ export async function cronRoutes(app: FastifyInstance) {
       ))
       .limit(50);
 
+    // ── FR-305: Quiet hours check ──
+    let quietStart = 22; // default 10 PM
+    let quietEnd = 7;    // default 7 AM
+    try {
+      const quietRow = await db.select().from(tenantConfigs)
+        .where(and(eq(tenantConfigs.tenantId, tenantId), eq(tenantConfigs.key, "ai.quiet_hours")))
+        .limit(1);
+      if (quietRow[0]) {
+        const val = quietRow[0].value as { start?: number; end?: number } | null;
+        if (val?.start !== undefined) quietStart = val.start;
+        if (val?.end !== undefined) quietEnd = val.end;
+      }
+    } catch { /* use defaults */ }
+
+    const currentHour = now.getHours();
+    const inQuietHours = quietStart > quietEnd
+      ? (currentHour >= quietStart || currentHour < quietEnd)  // e.g., 22-7 wraps midnight
+      : (currentHour >= quietStart && currentHour < quietEnd);
+
     // ── 3. Generate nudge notifications for overdue/stalled tasks ──
     const nudges: Array<{ taskId: string; userId: string; reason: string }> = [];
 
-    for (const task of overdueTasks) {
-      if (task.assigneeId) {
-        nudges.push({
-          taskId: task.id,
-          userId: task.assigneeId,
-          reason: `Task "${task.title}" is overdue (due: ${task.dueDate?.toISOString().split("T")[0]})`,
-        });
-      }
-    }
+    if (!inQuietHours) {
+      // FR-306: Nudge limit tracking — max per task per day
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
 
-    for (const task of stalledTasks) {
-      if (task.assigneeId) {
-        nudges.push({
-          taskId: task.id,
-          userId: task.assigneeId,
-          reason: `Task "${task.title}" has had no activity for >48 hours`,
-        });
+      for (const task of overdueTasks) {
+        if (task.assigneeId) {
+          // Check today's nudge count for this task
+          const nudgeCountResult = await db
+            .select({ cnt: count() })
+            .from(notifications)
+            .where(and(
+              eq(notifications.tenantId, tenantId),
+              eq(notifications.type, "ai_nudge"),
+              gte(notifications.createdAt, startOfDay),
+              sql`${notifications.data}->>'taskId' = ${task.id}`,
+            ));
+          const todayCount = Number(nudgeCountResult[0]?.cnt ?? 0);
+          if (todayCount < AI_MAX_NUDGES_PER_TASK_PER_DAY) {
+            nudges.push({
+              taskId: task.id,
+              userId: task.assigneeId,
+              reason: `Task "${task.title}" is overdue (due: ${task.dueDate?.toISOString().split("T")[0]})`,
+            });
+          }
+        }
+      }
+
+      for (const task of stalledTasks) {
+        if (task.assigneeId) {
+          const nudgeCountResult = await db
+            .select({ cnt: count() })
+            .from(notifications)
+            .where(and(
+              eq(notifications.tenantId, tenantId),
+              eq(notifications.type, "ai_nudge"),
+              gte(notifications.createdAt, startOfDay),
+              sql`${notifications.data}->>'taskId' = ${task.id}`,
+            ));
+          const todayCount = Number(nudgeCountResult[0]?.cnt ?? 0);
+          if (todayCount < AI_MAX_NUDGES_PER_TASK_PER_DAY) {
+            nudges.push({
+              taskId: task.id,
+              userId: task.assigneeId,
+              reason: `Task "${task.title}" has had no activity for >48 hours`,
+            });
+          }
+        }
       }
     }
 
@@ -197,6 +248,7 @@ export async function cronRoutes(app: FastifyInstance) {
         overdueTasks: overdueTasks.length,
         stalledTasks: stalledTasks.length,
         nudgesSent: nudges.length,
+        nudgesSkippedQuietHours: inQuietHours,
         escalationProposals: escalations.length,
         crossProjectDeps: crossProjectDeps.length,
         summaryGenerated: !!summaryAction,

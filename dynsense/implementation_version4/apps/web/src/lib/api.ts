@@ -451,12 +451,124 @@ class ApiClient {
     });
   }
 
+  // Phases (FR-111)
+  getPhases(projectId: string) {
+    return this.request<{ data: Array<{ id: string; projectId: string; name: string; position: number; createdAt: string }> }>(`/phases?projectId=${projectId}`);
+  }
+
+  createPhase(data: { projectId: string; name: string; position?: number }) {
+    return this.request<{ data: { id: string; projectId: string; name: string; position: number } }>("/phases", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  updatePhase(id: string, data: { name?: string; position?: number }) {
+    return this.request<{ data: { id: string; name: string; position: number } }>(`/phases/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deletePhase(id: string) {
+    return this.request<void>(`/phases/${id}`, { method: "DELETE" });
+  }
+
+  // AI Eval Harness (FR-211/212)
+  runAiEval(fixtures: Array<{ capability: string; input: Record<string, unknown>; expectedOutputKeys?: string[]; minConfidence?: number }>) {
+    return this.request<{ data: { total: number; passed: number; failed: number; results: unknown[] } }>("/ai-eval/run", {
+      method: "POST",
+      body: JSON.stringify({ fixtures }),
+    });
+  }
+
+  getAiDashboard(days?: number) {
+    const qs = days ? `?days=${days}` : "";
+    return this.request<{ data: { period: unknown; actions: unknown; cost: unknown; averageConfidence: number; hookDenials: unknown } }>(`/ai-eval/dashboard${qs}`);
+  }
+
   // AI Decisions
   getAiDecisions(params?: { limit?: number }) {
     const query = new URLSearchParams();
     if (params?.limit) query.set("limit", String(params.limit));
     const qs = query.toString();
     return this.request<{ data: Array<{ aiActionId: string; capability: string; hookName: string; phase: string; decision: string; reason: string | null; createdAt: string }> }>(`/ai/decisions${qs ? `?${qs}` : ""}`);
+  }
+
+  // AI Sessions (FR-3008)
+  getAiSessions() {
+    return this.request<{ data: Array<{ id: string; capability: string; turnCount: number; status: string; parentSessionId: string | null; createdAt: string; updatedAt: string; expiresAt: string }> }>("/ai/sessions");
+  }
+
+  getAiSessionDetail(id: string) {
+    return this.request<{ data: { session: { id: string; capability: string; turnCount: number; status: string; createdAt: string; expiresAt: string }; actions: Array<{ id: string; capability: string; status: string; input: unknown; output: unknown; confidence: number | null; createdAt: string; hooks: Array<{ hookName: string; phase: string; decision: string; reason: string | null; createdAt: string }> }> } }>(`/ai/sessions/${id}`);
+  }
+
+  terminateAiSession(id: string) {
+    return this.request<{ data: { id: string; status: string } }>(`/ai/sessions/${id}/terminate`, { method: "POST" });
+  }
+
+  // SSO (FR-106)
+  getSsoConfig() {
+    return this.request<{ data: unknown; configured: boolean }>("/sso/sso/config");
+  }
+
+  // MFA (FR-107)
+  getMfaStatus() {
+    return this.request<{ enrolled: boolean; enrolledAt: string | null; recoveryCodesRemaining: number }>("/sso/mfa/status");
+  }
+
+  enrollMfa() {
+    return this.request<{ data: { secret: string; provisioningUri: string; recoveryCodes: string[] } }>("/sso/mfa/enroll", { method: "POST" });
+  }
+
+  // Custom fields (FR-130)
+  getCustomFieldDefinitions(projectId?: string) {
+    const qs = projectId ? `?projectId=${projectId}` : "";
+    return this.request<{ data: Array<{ id: string; name: string; fieldType: string; config: unknown }> }>(`/custom-fields/definitions${qs}`);
+  }
+
+  createCustomFieldDefinition(data: { name: string; fieldType: string; config?: unknown }) {
+    return this.request<{ data: { id: string; name: string; fieldType: string } }>("/custom-fields/definitions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteCustomFieldDefinition(id: string) {
+    return this.request(`/custom-fields/definitions/${id}`, { method: "DELETE" });
+  }
+
+  getCustomFieldValues(taskId: string) {
+    return this.request<{ data: Array<{ id: string; fieldId: string; value: unknown }> }>(`/custom-fields/values/${taskId}`);
+  }
+
+  setCustomFieldValue(data: { taskId: string; fieldId: string; value: unknown }) {
+    return this.request<{ data: unknown }>("/custom-fields/values", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Templates (FR-114)
+  getTemplates() {
+    return this.request<{ data: Array<{ id: string; name: string; description: string | null }> }>("/templates/list");
+  }
+
+  cloneProject(data: { sourceProjectId: string; name: string }) {
+    return this.request<{ data: { project: unknown; clonedFrom: string; phasesCloned: number; tasksCloned: number } }>("/templates/clone", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // GitHub (FR-420)
+  getBranchName(taskId: string) {
+    return this.request<{ data: { taskId: string; branchName: string; gitCommand: string } }>(`/github/branch-name/${taskId}`);
+  }
+
+  getPipelineStatus(taskId: string) {
+    return this.request<{ data: { taskId: string; branch: string; pipelines: unknown[] } }>(`/github/pipeline-status/${taskId}`);
   }
 
   // Logout

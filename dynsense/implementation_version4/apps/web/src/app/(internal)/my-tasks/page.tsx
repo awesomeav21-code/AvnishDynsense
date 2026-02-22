@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -30,6 +30,7 @@ const priorityColors: Record<string, string> = {
   low: "bg-gray-100 text-gray-600",
 };
 
+const STATUSES = ["created", "ready", "in_progress", "review", "completed", "blocked", "cancelled"];
 const statusTabs = ["all", "in_progress", "ready", "review", "blocked", "completed"];
 
 export default function MyTasksPage() {
@@ -37,6 +38,8 @@ export default function MyTasksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.getTasks({ limit: 200 })
@@ -45,9 +48,27 @@ export default function MyTasksPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleStatusChange = useCallback(async (taskId: string, newStatus: string) => {
+    setChangingStatusId(null);
+    setSavingIds((prev) => new Set(prev).add(taskId));
+    const original = tasks.find((t) => t.id === taskId);
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus } : t));
+    try {
+      await api.updateTaskStatus(taskId, newStatus);
+    } catch {
+      if (original) setTasks((prev) => prev.map((t) => t.id === taskId ? original : t));
+      setError("Failed to update status");
+    } finally {
+      setSavingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(taskId);
+        return next;
+      });
+    }
+  }, [tasks]);
+
   const filtered = filterStatus === "all" ? tasks : tasks.filter((t) => t.status === filterStatus);
 
-  // Group by priority for the "What's Next" section
   const urgentTasks = tasks.filter((t) =>
     t.status !== "completed" && t.status !== "cancelled" &&
     (t.priority === "critical" || t.priority === "high")
@@ -73,7 +94,10 @@ export default function MyTasksPage() {
       <h1 className="text-2xl font-bold">My Tasks</h1>
 
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">{error}</div>
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
+          {error}
+          <button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600">&times;</button>
+        </div>
       )}
 
       {/* What's Next cards */}
@@ -128,30 +152,56 @@ export default function MyTasksPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border divide-y">
-          {filtered.map((task) => (
-            <Link
-              key={task.id}
-              href={`/tasks/${task.id}`}
-              className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
-              </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${priorityColors[task.priority] ?? ""}`}>
-                {task.priority}
-              </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${statusColors[task.status] ?? ""}`}>
-                {task.status.replace("_", " ")}
-              </span>
-              {task.dueDate && (
-                <span className={`text-xs whitespace-nowrap ${
-                  new Date(task.dueDate) < new Date() ? "text-red-500 font-medium" : "text-gray-400"
-                }`}>
-                  {new Date(task.dueDate).toLocaleDateString()}
+          {filtered.map((task) => {
+            const isSaving = savingIds.has(task.id);
+            const isChanging = changingStatusId === task.id;
+
+            return (
+              <div
+                key={task.id}
+                className={`flex items-center gap-4 px-4 py-3 transition-colors ${isSaving ? "opacity-60" : "hover:bg-gray-50"}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <Link href={`/tasks/${task.id}`} className="text-sm font-medium text-gray-900 truncate hover:text-ai transition-colors block">
+                    {task.title}
+                  </Link>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${priorityColors[task.priority] ?? ""}`}>
+                  {task.priority}
                 </span>
-              )}
-            </Link>
-          ))}
+
+                {/* Quick status change */}
+                {isChanging ? (
+                  <select
+                    autoFocus
+                    value={task.status}
+                    onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                    onBlur={() => setChangingStatusId(null)}
+                    className="text-xs px-2 py-0.5 border rounded"
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>{s.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <button
+                    onClick={() => setChangingStatusId(task.id)}
+                    className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap cursor-pointer hover:ring-2 hover:ring-ai/30 transition-all ${statusColors[task.status] ?? ""}`}
+                  >
+                    {task.status.replace("_", " ")}
+                  </button>
+                )}
+
+                {task.dueDate && (
+                  <span className={`text-xs whitespace-nowrap ${
+                    new Date(task.dueDate) < new Date() ? "text-red-500 font-medium" : "text-gray-400"
+                  }`}>
+                    {new Date(task.dueDate).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

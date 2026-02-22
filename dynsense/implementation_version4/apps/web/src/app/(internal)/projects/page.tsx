@@ -20,6 +20,11 @@ export default function ProjectsListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [showClone, setShowClone] = useState(false);
+  const [templates, setTemplates] = useState<Array<{ id: string; name: string; description: string | null }>>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [cloneName, setCloneName] = useState("");
+  const [cloning, setCloning] = useState(false);
 
   useEffect(() => {
     api.getProjects()
@@ -60,13 +65,27 @@ export default function ProjectsListPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Projects</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
-        >
-          + New Project
-        </button>
+        <h1 className="text-lg font-bold">Projects</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              setShowClone(true);
+              try {
+                const res = await api.getTemplates();
+                setTemplates(res.data);
+              } catch { /* ignore */ }
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50"
+          >
+            Clone from Template
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
+          >
+            + New Project
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -103,6 +122,68 @@ export default function ProjectsListPage() {
             </button>
             <button
               onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Clone from template dialog */}
+      {showClone && (
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <h3 className="text-xs font-semibold">Clone from Template</h3>
+          {templates.length === 0 ? (
+            <p className="text-xs text-gray-500">No templates available. Create a project first to use it as a template.</p>
+          ) : (
+            <>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                className="w-full text-xs border rounded px-3 py-1.5"
+              >
+                <option value="">Select a template...</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder="New project name"
+                className="w-full text-xs border rounded px-3 py-1.5"
+              />
+            </>
+          )}
+          <div className="flex gap-2">
+            {templates.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (!selectedTemplate || !cloneName.trim()) return;
+                  setCloning(true);
+                  try {
+                    const res = await api.cloneProject({ sourceProjectId: selectedTemplate, name: cloneName.trim() });
+                    const cloned = res.data;
+                    setProjects((prev) => [{ id: (cloned.project as { id: string }).id, name: cloneName.trim(), status: "active", description: null, createdAt: new Date().toISOString() }, ...prev]);
+                    setShowClone(false);
+                    setSelectedTemplate("");
+                    setCloneName("");
+                  } catch {
+                    setError("Failed to clone project");
+                  } finally {
+                    setCloning(false);
+                  }
+                }}
+                disabled={cloning || !selectedTemplate || !cloneName.trim()}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+              >
+                {cloning ? "Cloning..." : "Clone"}
+              </button>
+            )}
+            <button
+              onClick={() => { setShowClone(false); setSelectedTemplate(""); setCloneName(""); }}
               className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50"
             >
               Cancel
