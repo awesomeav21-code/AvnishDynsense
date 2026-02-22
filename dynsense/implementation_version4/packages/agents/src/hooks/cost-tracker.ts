@@ -1,6 +1,8 @@
-// Ref: FR-345 — cost-tracker hook: token/cost accounting to DB + Redis
+// Ref: FR-345 — cost-tracker hook: token/cost accounting to DB
 // Ref: FR-363 — Per-tenant cost tracking
 // Ref: design-doc §4.4 — Phase: PostToolUse (parallel)
+import type { Database } from "@dynsense/db";
+import { aiCostLog } from "@dynsense/db";
 import type { HookContext } from "./tenant-isolator.js";
 
 export interface CostTrackingData {
@@ -11,11 +13,16 @@ export interface CostTrackingData {
 }
 
 export async function costTracker(
-  _ctx: HookContext,
-  _costData: CostTrackingData
+  ctx: HookContext,
+  costData: CostTrackingData,
+  db: Database,
 ): Promise<void> {
-  // Stub: In full implementation:
-  // 1. Insert into ai_cost_log table
-  // 2. Increment Redis daily counter for tenant
-  // 3. Check budget thresholds (80%, 100%)
+  await db.insert(aiCostLog).values({
+    tenantId: ctx.tenantId,
+    aiActionId: ctx.aiActionId,
+    model: costData.model,
+    inputTokens: costData.inputTokens,
+    outputTokens: costData.outputTokens,
+    costUsd: costData.costUsd.toFixed(6),
+  });
 }

@@ -7,6 +7,9 @@ export { wbsGeneratorConfig } from "./agents/wbs-generator.js";
 export { whatsNextConfig } from "./agents/whats-next.js";
 export { nlQueryConfig } from "./agents/nl-query.js";
 export { summaryWriterConfig } from "./agents/summary-writer.js";
+export { riskPredictorConfig } from "./agents/risk-predictor.js";
+export { aiPmAgentConfig } from "./agents/ai-pm-agent.js";
+export { scopeDetectorConfig } from "./agents/scope-detector.js";
 
 // Hooks
 export { tenantIsolator } from "./hooks/tenant-isolator.js";
@@ -14,13 +17,21 @@ export type { HookContext, HookResult } from "./hooks/tenant-isolator.js";
 export { autonomyEnforcer } from "./hooks/autonomy-enforcer.js";
 export { rateLimiter } from "./hooks/rate-limiter.js";
 export { costTracker } from "./hooks/cost-tracker.js";
+export type { CostTrackingData } from "./hooks/cost-tracker.js";
 export { auditWriter } from "./hooks/audit-writer.js";
 export { traceability } from "./hooks/traceability.js";
 export { notificationHook } from "./hooks/notification-hook.js";
 export { sessionManager } from "./hooks/session-manager.js";
+export type { SessionState } from "./hooks/session-manager.js";
 
 // Sessions
 export { SessionService } from "./sessions/session-service.js";
+export type {
+  CreateSessionInput,
+  ResumeSessionInput,
+  ForkSessionInput,
+  SessionRecord,
+} from "./sessions/session-service.js";
 
 // Permissions
 export { evaluatePermission } from "./permissions/permission-chain.js";

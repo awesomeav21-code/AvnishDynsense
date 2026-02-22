@@ -1,15 +1,24 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, desc } from "drizzle-orm";
-import { aiActions, aiSessions } from "@dynsense/db";
+import { aiActions, aiSessions, aiHookLog } from "@dynsense/db";
 import { aiExecuteSchema, aiReviewActionSchema } from "@dynsense/shared";
+import { AIOrchestrator } from "@dynsense/agents";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
+import { writeAuditLog } from "./audit.js";
 import { getDb } from "../db.js";
 import type { Env } from "../config/env.js";
 
 export async function aiRoutes(app: FastifyInstance) {
   const env = app.env as Env;
   const db = getDb(env);
+
+  // Create orchestrator instance — falls back to stub output if no API key
+  const orchestrator = new AIOrchestrator({
+    db,
+    anthropicApiKey: env.ANTHROPIC_API_KEY,
+  });
 
   app.addHook("preHandler", authenticate);
 
@@ -29,16 +38,32 @@ export async function aiRoutes(app: FastifyInstance) {
       sessionId: body.sessionId,
     }).returning();
 
-    // Simulate orchestrator pipeline (stub — will connect to real orchestrator when Claude API key is configured)
-    // For R0, return a "proposed" result with placeholder output
-    const output = generateStubOutput(body.capability, body.input);
-    const confidence = 0.75;
+    // Execute through orchestrator pipeline
+    const result = await orchestrator.execute({
+      tenantId,
+      userId,
+      capability: body.capability,
+      input: body.input,
+      sessionId: body.sessionId,
+    });
 
+    // Capture pre-action state as rollback data (FR-304)
+    const rollbackSnapshot = {
+      status: action!.status,
+      disposition: action!.disposition,
+      output: action!.output,
+      confidence: action!.confidence,
+      capturedAt: new Date().toISOString(),
+    };
+
+    // Update ai_action record with result + rollback data
     const [updated] = await db.update(aiActions)
       .set({
-        status: "proposed",
-        output,
-        confidence: confidence.toString(),
+        status: result.status,
+        disposition: result.disposition,
+        output: result.output,
+        confidence: result.confidence?.toString() ?? null,
+        rollbackData: rollbackSnapshot,
         updatedAt: new Date(),
       })
       .where(eq(aiActions.id, action!.id))
@@ -60,6 +85,28 @@ export async function aiRoutes(app: FastifyInstance) {
 
     const rows = await db.select().from(aiActions)
       .where(and(...conditions))
+      .orderBy(desc(aiActions.createdAt))
+      .limit(Number(limit))
+      .offset(Number(offset));
+
+    return { data: rows };
+  });
+
+  // GET /actions/shadow — list shadow-mode AI actions (FR-302, admin/pm only)
+  // NOTE: Must be registered BEFORE /actions/:id to avoid "shadow" matching as :id
+  app.get("/actions/shadow", {
+    preHandler: [requirePermission("ai:review")],
+  }, async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const { limit = 50, offset = 0 } = request.query as {
+      limit?: number; offset?: number;
+    };
+
+    const rows = await db.select().from(aiActions)
+      .where(and(
+        eq(aiActions.tenantId, tenantId),
+        eq(aiActions.disposition, "shadow"),
+      ))
       .orderBy(desc(aiActions.createdAt))
       .limit(Number(limit))
       .offset(Number(offset));
@@ -126,6 +173,137 @@ export async function aiRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
+  // POST /actions/:id/rollback — rollback an AI action (FR-308)
+  app.post("/actions/:id/rollback", async (request) => {
+    const { tenantId, sub: userId } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+
+    const action = await db.query.aiActions.findFirst({
+      where: and(eq(aiActions.id, id), eq(aiActions.tenantId, tenantId)),
+    });
+
+    if (!action) throw AppError.notFound("AI action not found");
+
+    // Only allow rollback for approved or executed actions
+    if (action.status !== "approved" && action.status !== "executed") {
+      throw AppError.badRequest(
+        `Cannot rollback action with status '${action.status}'. Only 'approved' or 'executed' actions can be rolled back.`,
+      );
+    }
+
+    // Verify rollback data exists
+    if (!action.rollbackData) {
+      throw AppError.badRequest(
+        "No rollback data available for this action. The orchestrator did not store a pre-action snapshot.",
+      );
+    }
+
+    // Set the action status to rolled_back
+    const [updated] = await db.update(aiActions)
+      .set({
+        status: "rolled_back",
+        updatedAt: new Date(),
+      })
+      .where(eq(aiActions.id, id))
+      .returning();
+
+    // Log in audit trail
+    await writeAuditLog(db, {
+      tenantId,
+      entityType: "ai_action",
+      entityId: id,
+      action: "rollback",
+      actorId: userId,
+      aiActionId: id,
+      diff: {
+        status: { old: action.status, new: "rolled_back" },
+        rollbackData: action.rollbackData,
+      },
+    });
+
+    return { data: updated };
+  });
+
+  // GET /decisions — AI decision log aggregated from ai_hook_log + ai_actions (R1-1)
+  app.get("/decisions", async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const { limit = 50, offset = 0 } = request.query as {
+      limit?: number; offset?: number;
+    };
+
+    // Query ai_hook_log joined with ai_actions for the tenant
+    const rows = await db
+      .select({
+        aiActionId: aiHookLog.aiActionId,
+        capability: aiActions.capability,
+        hookName: aiHookLog.hookName,
+        phase: aiHookLog.phase,
+        decision: aiHookLog.decision,
+        reason: aiHookLog.reason,
+        createdAt: aiHookLog.createdAt,
+      })
+      .from(aiHookLog)
+      .leftJoin(aiActions, eq(aiHookLog.aiActionId, aiActions.id))
+      .where(eq(aiHookLog.tenantId, tenantId))
+      .orderBy(desc(aiHookLog.createdAt))
+      .limit(Number(limit))
+      .offset(Number(offset));
+
+    return { data: rows };
+  });
+
+  // POST /risk-analysis — convenience endpoint to trigger risk prediction for a project (R1-1)
+  app.post("/risk-analysis", async (request, reply) => {
+    const { tenantId, sub: userId } = request.jwtPayload;
+    const { projectId } = request.body as { projectId?: string };
+
+    if (!projectId) {
+      throw AppError.badRequest("projectId is required in the request body");
+    }
+
+    // Create ai_action record for the risk analysis
+    const [action] = await db.insert(aiActions).values({
+      tenantId,
+      capability: "risk_predictor",
+      status: "running",
+      disposition: "propose",
+      input: { projectId },
+      triggeredBy: userId,
+    }).returning();
+
+    // Execute risk prediction through orchestrator pipeline
+    const result = await orchestrator.execute({
+      tenantId,
+      userId,
+      capability: "risk_predictor",
+      input: { projectId },
+    });
+
+    // Capture pre-action state as rollback data
+    const rollbackSnapshot = {
+      status: action!.status,
+      disposition: action!.disposition,
+      output: action!.output,
+      confidence: action!.confidence,
+      capturedAt: new Date().toISOString(),
+    };
+
+    // Update ai_action record with result
+    const [updated] = await db.update(aiActions)
+      .set({
+        status: result.status,
+        disposition: result.disposition,
+        output: result.output,
+        confidence: result.confidence?.toString() ?? null,
+        rollbackData: rollbackSnapshot,
+        updatedAt: new Date(),
+      })
+      .where(eq(aiActions.id, action!.id))
+      .returning();
+
+    reply.status(201).send({ data: updated });
+  });
+
   // GET /sessions — list AI sessions for user
   app.get("/sessions", async (request) => {
     const { tenantId, sub: userId } = request.jwtPayload;
@@ -137,47 +315,4 @@ export async function aiRoutes(app: FastifyInstance) {
 
     return { data: rows };
   });
-}
-
-// Stub output generator for R0 demo purposes
-function generateStubOutput(capability: string, input: Record<string, unknown>): Record<string, unknown> {
-  switch (capability) {
-    case "wbs_generator":
-      return {
-        type: "wbs",
-        phases: [
-          { name: "Phase 1: Discovery", tasks: ["Stakeholder interviews", "Requirements gathering", "Gap analysis"] },
-          { name: "Phase 2: Design", tasks: ["Solution architecture", "UI/UX wireframes", "Data model design"] },
-          { name: "Phase 3: Build", tasks: ["Core implementation", "Integration development", "Testing"] },
-          { name: "Phase 4: Deploy", tasks: ["Staging deployment", "UAT", "Production cutover"] },
-        ],
-        note: "AI-generated WBS based on project context. Review and adjust as needed.",
-      };
-    case "whats_next":
-      return {
-        type: "recommendations",
-        items: [
-          { priority: "high", suggestion: "Complete overdue tasks before starting new work" },
-          { priority: "medium", suggestion: "Review pending AI proposals in the queue" },
-          { priority: "low", suggestion: "Update project status and timeline estimates" },
-        ],
-      };
-    case "nl_query":
-      return {
-        type: "query_result",
-        query: input["query"] ?? "No query provided",
-        answer: "This is a placeholder response. Connect the Claude API to enable natural language queries against your project data.",
-        sources: [],
-      };
-    case "summary_writer":
-      return {
-        type: "summary",
-        text: "Project is progressing with 3 tasks in progress and 2 pending review. No blockers identified. Next milestone is due in 5 business days.",
-      };
-    default:
-      return {
-        type: capability,
-        message: `Stub output for capability '${capability}'. Connect Claude API for real results.`,
-      };
-  }
 }

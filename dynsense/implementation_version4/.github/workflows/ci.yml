@@ -1,4 +1,3 @@
-# Ref: FR-540 — GitHub Actions workflow: lint → build → test on every PR
 name: CI
 
 on:
@@ -7,73 +6,42 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
-    name: Lint → Build → Test
+    name: Lint, Typecheck, Build & Test
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: dynsense
-          POSTGRES_PASSWORD: dynsense_dev
-          POSTGRES_DB: dynsense_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-        options: >-
-          --health-cmd "wget --spider -q http://localhost:8222/healthz || exit 1"
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          node-version: 20
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm turbo lint
 
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm turbo typecheck
 
       - name: Build
-        run: pnpm build
+        run: pnpm turbo build
 
       - name: Test
-        run: pnpm test
-        env:
-          DATABASE_URL: postgresql://dynsense:dynsense_dev@localhost:5432/dynsense_test
-          REDIS_URL: redis://localhost:6379
-          NATS_URL: nats://localhost:4222
-          NODE_ENV: test
+        run: pnpm turbo test

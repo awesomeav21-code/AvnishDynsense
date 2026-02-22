@@ -14,6 +14,10 @@ const envSchema = z.object({
   JWT_ACCESS_TOKEN_EXPIRY: z.string().default("1h"),
   JWT_REFRESH_TOKEN_EXPIRY: z.string().default("30d"),
   ANTHROPIC_API_KEY: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional(),
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

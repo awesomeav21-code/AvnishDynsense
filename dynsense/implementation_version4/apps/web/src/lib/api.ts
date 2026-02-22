@@ -162,6 +162,10 @@ class ApiClient {
     return this.request(`/tasks/${id}`, { method: "DELETE" });
   }
 
+  getWhatsNext() {
+    return this.request<{ data: Array<{ id: string; title: string; status: string; priority: string; dueDate: string | null; projectId: string; reason: string }> }>("/tasks/whats-next");
+  }
+
   // Comments
   getComments(taskId: string) {
     return this.request<{ data: Array<{ id: string; body: string; authorId: string; createdAt: string }> }>(`/comments/task/${taskId}`);
@@ -266,6 +270,193 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ action, editedOutput }),
     });
+  }
+
+  rollbackAiAction(id: string) {
+    return this.request<{ data: { id: string; status: string } }>(`/ai/actions/${id}/rollback`, {
+      method: "POST",
+    });
+  }
+
+  getShadowActions(params?: { limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    query.set("disposition", "shadow");
+    const qs = query.toString();
+    return this.request<{ data: Array<{ id: string; capability: string; status: string; disposition: string; output: unknown; confidence: string | null; input: unknown; createdAt: string; updatedAt: string }> }>(`/ai/actions/shadow?${qs}`);
+  }
+
+  // Notifications
+  getNotifications(params?: { type?: string; unread?: boolean; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.type) query.set("type", params.type);
+    if (params?.unread !== undefined) query.set("unread", String(params.unread));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.request<{ data: Array<{ id: string; type: string; title: string; body: string | null; data: unknown; readAt: string | null; createdAt: string }> }>(`/notifications${qs ? `?${qs}` : ""}`);
+  }
+
+  markNotificationRead(id: string) {
+    return this.request<{ data: { id: string; readAt: string } }>(`/notifications/${id}/read`, {
+      method: "POST",
+    });
+  }
+
+  markAllNotificationsRead() {
+    return this.request<{ message: string }>("/notifications/read-all", {
+      method: "POST",
+    });
+  }
+
+  // Saved Views
+  getSavedViews() {
+    return this.request<{ data: Array<{ id: string; name: string; viewType: string; filters: unknown; sort: unknown; columns: unknown; createdAt: string; updatedAt: string }> }>("/views");
+  }
+
+  createSavedView(data: { name: string; viewType: string; filters?: unknown; sort?: unknown; columns?: unknown }) {
+    return this.request<{ data: { id: string; name: string; viewType: string } }>("/views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteSavedView(id: string) {
+    return this.request(`/views/${id}`, { method: "DELETE" });
+  }
+
+  // Integrations (R1-2)
+  getIntegrations() {
+    return this.request<{ data: Array<{ id: string; provider: string; enabled: boolean; config: unknown; channelMapping: unknown; createdAt: string }> }>("/integrations");
+  }
+
+  upsertIntegration(data: { provider: string; enabled?: boolean; config?: Record<string, unknown>; channelMapping?: Record<string, string> }) {
+    return this.request<{ data: { id: string; provider: string; enabled: boolean } }>("/integrations", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  getIntegrationEvents(params?: { provider?: string; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.provider) query.set("provider", params.provider);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.request<{ data: Array<{ id: string; provider: string; eventType: string; taskId: string | null; createdAt: string }> }>(`/integrations/events${qs ? `?${qs}` : ""}`);
+  }
+
+  // Tags (R1-6)
+  getTags() {
+    return this.request<{ data: Array<{ id: string; name: string; color: string; createdAt: string }> }>("/tags");
+  }
+
+  createTag(data: { name: string; color?: string }) {
+    return this.request<{ data: { id: string; name: string; color: string } }>("/tags", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteTag(id: string) {
+    return this.request(`/tags/${id}`, { method: "DELETE" });
+  }
+
+  getTaskTags(taskId: string) {
+    return this.request<{ data: Array<{ id: string; name: string; color: string }> }>(`/tags/task/${taskId}`);
+  }
+
+  addTagToTask(taskId: string, tagId: string) {
+    return this.request("/tags/task", {
+      method: "POST",
+      body: JSON.stringify({ taskId, tagId }),
+    });
+  }
+
+  removeTagFromTask(taskId: string, tagId: string) {
+    return this.request(`/tags/task/${taskId}/${tagId}`, { method: "DELETE" });
+  }
+
+  // Search (R1-6)
+  search(q: string, type?: "all" | "tasks" | "projects" | "comments") {
+    const query = new URLSearchParams({ q });
+    if (type) query.set("type", type);
+    return this.request<{ data: Array<{ type: string; id: string; title: string; description: string | null }>; total: number }>(`/search?${query}`);
+  }
+
+  // Feature Flags (R1-5)
+  getFeatureFlags() {
+    return this.request<{ data: Record<string, { enabled: boolean; metadata: Record<string, unknown> }> }>("/feature-flags");
+  }
+
+  checkFeatureFlag(key: string) {
+    return this.request<{ data: { key: string; enabled: boolean } }>(`/feature-flags/${key}`);
+  }
+
+  upsertFeatureFlag(data: { key: string; enabled: boolean; metadata?: Record<string, unknown> }) {
+    return this.request<{ data: { id: string; key: string; enabled: boolean } }>("/feature-flags", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Recurring Tasks (R1-6)
+  getRecurringTasks(projectId?: string) {
+    const qs = projectId ? `?projectId=${projectId}` : "";
+    return this.request<{ data: Array<{ id: string; title: string; schedule: string; enabled: boolean; nextRunAt: string | null; lastRunAt: string | null }> }>(`/recurring-tasks${qs}`);
+  }
+
+  createRecurringTask(data: { projectId: string; title: string; description?: string; priority?: string; schedule: string; cronExpression?: string }) {
+    return this.request<{ data: { id: string; title: string; schedule: string } }>("/recurring-tasks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteRecurringTask(id: string) {
+    return this.request(`/recurring-tasks/${id}`, { method: "DELETE" });
+  }
+
+  runRecurringTasks() {
+    return this.request<{ data: Array<{ id: string; title: string }>; message: string }>("/recurring-tasks/run", {
+      method: "POST",
+    });
+  }
+
+  // Reminders (R1-6)
+  getReminders() {
+    return this.request<{ data: Array<{ id: string; taskId: string; remindAt: string; channel: string; sentAt: string | null }> }>("/reminders");
+  }
+
+  createReminder(data: { taskId: string; remindAt: string; channel?: string }) {
+    return this.request<{ data: { id: string; taskId: string; remindAt: string } }>("/reminders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteReminder(id: string) {
+    return this.request(`/reminders/${id}`, { method: "DELETE" });
+  }
+
+  // Cron / AI PM Agent (R1-3)
+  runAiPmLoop() {
+    return this.request<{ data: { overdueTasks: number; stalledTasks: number; nudgesSent: number; escalationProposals: number } }>("/cron/ai-pm-loop", {
+      method: "POST",
+    });
+  }
+
+  runScopeCheck(projectId: string) {
+    return this.request<{ data: { id: string; capability: string; status: string; output: unknown } }>("/cron/scope-check", {
+      method: "POST",
+      body: JSON.stringify({ projectId }),
+    });
+  }
+
+  // AI Decisions
+  getAiDecisions(params?: { limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    const qs = query.toString();
+    return this.request<{ data: Array<{ aiActionId: string; capability: string; hookName: string; phase: string; decision: string; reason: string | null; createdAt: string }> }>(`/ai/decisions${qs ? `?${qs}` : ""}`);
   }
 
   // Logout

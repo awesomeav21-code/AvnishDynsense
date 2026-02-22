@@ -45,6 +45,37 @@ export const R0_SUBAGENTS: readonly SubagentConfig[] = [
   },
 ];
 
+// Ref: R1-1 — R1 subagent specifications: risk predictor, AI PM, scope detector
+export const R1_SUBAGENTS: readonly SubagentConfig[] = [
+  {
+    capability: "risk_predictor",
+    model: "opus",
+    permissionMode: "default",
+    maxTurns: 10,
+    readOnly: true,
+  },
+  {
+    capability: "ai_pm_agent",
+    model: "sonnet",
+    permissionMode: "default",
+    maxTurns: 5,
+    readOnly: true,
+  },
+  {
+    capability: "scope_detector",
+    model: "sonnet",
+    permissionMode: "default",
+    maxTurns: 5,
+    readOnly: true,
+  },
+];
+
+// Combined R0 + R1 subagents for orchestrator validation
+export const ALL_SUBAGENTS: readonly SubagentConfig[] = [
+  ...R0_SUBAGENTS,
+  ...R1_SUBAGENTS,
+];
+
 export const AI_CONFIDENCE_THRESHOLD = 0.6;
 export const AI_MAX_NUDGES_PER_TASK_PER_DAY = 2;
 export const AI_SESSION_RETENTION_DAYS = 30;

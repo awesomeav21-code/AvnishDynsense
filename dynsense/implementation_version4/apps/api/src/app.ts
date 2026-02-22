@@ -15,6 +15,15 @@ import { assignmentRoutes } from "./routes/assignments.js";
 import { auditRoutes } from "./routes/audit.js";
 import { configRoutes } from "./routes/config.js";
 import { aiRoutes } from "./routes/ai.js";
+import { notificationRoutes } from "./routes/notifications.js";
+import { viewRoutes } from "./routes/views.js";
+import { integrationRoutes } from "./routes/integrations.js";
+import { tagRoutes } from "./routes/tags.js";
+import { searchRoutes } from "./routes/search.js";
+import { featureFlagRoutes } from "./routes/feature-flags.js";
+import { recurringTaskRoutes } from "./routes/recurring-tasks.js";
+import { reminderRoutes } from "./routes/reminders.js";
+import { cronRoutes } from "./routes/cron.js";
 import type { Env } from "./config/env.js";
 
 declare module "fastify" {
@@ -67,6 +76,15 @@ export async function buildApp(env: Env) {
     api.register(auditRoutes, { prefix: "/audit" });
     api.register(configRoutes, { prefix: "/config" });
     api.register(aiRoutes, { prefix: "/ai" });
+    api.register(notificationRoutes, { prefix: "/notifications" });
+    api.register(viewRoutes, { prefix: "/views" });
+    api.register(integrationRoutes, { prefix: "/integrations" });
+    api.register(tagRoutes, { prefix: "/tags" });
+    api.register(searchRoutes, { prefix: "/search" });
+    api.register(featureFlagRoutes, { prefix: "/feature-flags" });
+    api.register(recurringTaskRoutes, { prefix: "/recurring-tasks" });
+    api.register(reminderRoutes, { prefix: "/reminders" });
+    api.register(cronRoutes, { prefix: "/cron" });
   }, { prefix: "/api/v1" });
 
   return app;

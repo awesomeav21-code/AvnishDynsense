@@ -20,9 +20,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@dynsense/db": "workspace:*",
     "@dynsense/mcp": "workspace:*",
-    "@dynsense/shared": "workspace:*"
+    "@dynsense/shared": "workspace:*",
+    "drizzle-orm": "^0.36.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

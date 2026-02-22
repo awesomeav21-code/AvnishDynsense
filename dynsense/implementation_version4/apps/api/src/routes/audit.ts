@@ -41,6 +41,26 @@ export async function auditRoutes(app: FastifyInstance) {
   });
 }
 
+// Helper to compute field-level diff between two objects (FR-140)
+export function computeDiff(
+  oldObj: Record<string, unknown>,
+  newObj: Record<string, unknown>,
+): Record<string, { old: unknown; new: unknown }> | null {
+  const diff: Record<string, { old: unknown; new: unknown }> = {};
+
+  for (const key of Object.keys(newObj)) {
+    const oldVal = oldObj[key];
+    const newVal = newObj[key];
+
+    // Compare by JSON string to handle dates, nested objects, etc.
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+      diff[key] = { old: oldVal ?? null, new: newVal ?? null };
+    }
+  }
+
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 // Helper to write audit log entries from other routes
 export async function writeAuditLog(
   db: ReturnType<typeof getDb>,

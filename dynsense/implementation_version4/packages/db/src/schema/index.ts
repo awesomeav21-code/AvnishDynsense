@@ -22,3 +22,18 @@ export { aiSessions } from "./ai-sessions.js";
 export { aiHookLog } from "./ai-hook-log.js";
 export { aiMcpServers } from "./ai-mcp-servers.js";
 export { embeddings } from "./embeddings.js";
+
+// R1 tables: tags, task-tags, notifications, saved-views, custom-fields
+export { tags } from "./tags.js";
+export { taskTags } from "./task-tags.js";
+export { notifications } from "./notifications.js";
+export { savedViews } from "./saved-views.js";
+export { customFieldDefinitions } from "./custom-field-definitions.js";
+export { customFieldValues } from "./custom-field-values.js";
+
+// R1 tables: integrations, feature-flags, recurring-tasks, task-reminders
+export { integrations } from "./integrations.js";
+export { integrationEvents } from "./integration-events.js";
+export { featureFlags } from "./feature-flags.js";
+export { recurringTaskConfigs } from "./recurring-task-configs.js";
+export { taskReminders } from "./task-reminders.js";

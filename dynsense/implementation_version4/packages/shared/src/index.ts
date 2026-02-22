@@ -21,7 +21,7 @@ export { ROLES, ALL_ROLES } from "./constants/roles.js";
 export { ROLE_PERMISSIONS } from "./constants/permissions.js";
 export type { Permission } from "./constants/permissions.js";
 export {
-  R0_SUBAGENTS, AI_CONFIDENCE_THRESHOLD,
+  R0_SUBAGENTS, R1_SUBAGENTS, ALL_SUBAGENTS, AI_CONFIDENCE_THRESHOLD,
   AI_MAX_NUDGES_PER_TASK_PER_DAY, AI_SESSION_RETENTION_DAYS,
   AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MS,
 } from "./constants/ai-capabilities.js";
