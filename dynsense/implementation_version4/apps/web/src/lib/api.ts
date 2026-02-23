@@ -24,7 +24,7 @@ class ApiClient {
   async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...((options.headers as Record<string, string>) ?? {}),
     };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -115,6 +115,17 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  updateProject(id: string, data: { name?: string; description?: string; status?: string }) {
+    return this.request<{ data: { id: string; name: string; status: string; description: string | null } }>(`/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteProject(id: string) {
+    return this.request(`/projects/${id}`, { method: "DELETE" });
   }
 
   // Tasks
@@ -262,7 +273,7 @@ class ApiClient {
     if (params?.startDate) query.set("startDate", params.startDate);
     if (params?.endDate) query.set("endDate", params.endDate);
     const qs = query.toString();
-    return this.request<{ data: Array<{ id: string; action: string; entityType: string; entityId: string; userId: string; createdAt: string }>; total?: number }>(`/audit${qs ? `?${qs}` : ""}`);
+    return this.request<{ data: Array<{ id: string; action: string; entityType: string; entityId: string; actorId: string | null; actorType: string; createdAt: string }>; total?: number }>(`/audit${qs ? `?${qs}` : ""}`);
   }
 
   // AI

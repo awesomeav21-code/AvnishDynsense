@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import {
+  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+} from "recharts";
 
 interface Project {
   id: string;
@@ -39,6 +43,33 @@ interface AiAction {
   updatedAt: string;
 }
 
+interface FullTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  completedAt: string | null;
+  dueDate: string | null;
+}
+
+const STATUS_CHART_COLORS: Record<string, string> = {
+  created: "#9CA3AF",
+  ready: "#3B82F6",
+  in_progress: "#6366F1",
+  review: "#EAB308",
+  completed: "#22C55E",
+  blocked: "#EF4444",
+  cancelled: "#D1D5DB",
+};
+
+const PRIORITY_CHART_COLORS: Record<string, string> = {
+  critical: "#EF4444",
+  high: "#F97316",
+  medium: "#3B82F6",
+  low: "#9CA3AF",
+};
+
 const priorityColors: Record<string, string> = {
   critical: "bg-red-100 text-red-700",
   high: "bg-orange-100 text-orange-700",
@@ -57,6 +88,7 @@ function formatDueDate(dueDate: string | null, now: Date): { text: string; isOve
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [taskStats, setTaskStats] = useState<TaskStat[]>([]);
+  const [allTasks, setAllTasks] = useState<FullTask[]>([]);
   const [whatsNext, setWhatsNext] = useState<WhatsNextTask[]>([]);
   const [aiSummary, setAiSummary] = useState<AiAction | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,14 +99,16 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [projRes, statsRes, whatsNextRes, aiRes] = await Promise.all([
+        const [projRes, statsRes, tasksRes, whatsNextRes, aiRes] = await Promise.all([
           api.getProjects(),
           api.getTaskStats(),
+          api.getTasks({ limit: 500 }),
           api.getWhatsNext().catch(() => ({ data: [] as WhatsNextTask[] })),
           api.getAiActions({ capability: "summary_writer", limit: 1 }).catch(() => ({ data: [] as AiAction[] })),
         ]);
         setProjects(projRes.data);
         setTaskStats(statsRes.data);
+        setAllTasks(tasksRes.data as unknown as FullTask[]);
         setWhatsNext(whatsNextRes.data);
         if (aiRes.data.length > 0) {
           setAiSummary(aiRes.data[0]!);
@@ -160,6 +194,152 @@ export default function DashboardPage() {
           <div className="text-2xl font-bold mt-1 text-confidence-high">{completedTasks}</div>
         </div>
       </div>
+
+      {/* Charts */}
+      {totalTasks > 0 && (() => {
+        const pieData = taskStats.map((s) => ({
+          name: s.status.replace("_", " "),
+          value: s.count,
+          color: STATUS_CHART_COLORS[s.status] ?? "#9CA3AF",
+        }));
+
+        const priorityCounts = allTasks.reduce<Record<string, number>>((acc, t) => {
+          acc[t.priority] = (acc[t.priority] ?? 0) + 1;
+          return acc;
+        }, {});
+        const priorityPieData = Object.entries(priorityCounts).map(([priority, count]) => ({
+          name: priority,
+          value: count,
+          color: PRIORITY_CHART_COLORS[priority] ?? "#9CA3AF",
+        }));
+
+        // Line chart: tasks created per day over the last 14 days
+        const dayMs = 86400000;
+        const days = 14;
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const lineData: Array<{ date: string; created: number; completed: number }> = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const dayStart = todayStart - i * dayMs;
+          const dayEnd = dayStart + dayMs;
+          const label = new Date(dayStart).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          const created = allTasks.filter((t) => {
+            const d = new Date(t.createdAt).getTime();
+            return d >= dayStart && d < dayEnd;
+          }).length;
+          const completed = allTasks.filter((t) => {
+            if (!t.completedAt) return false;
+            const d = new Date(t.completedAt).getTime();
+            return d >= dayStart && d < dayEnd;
+          }).length;
+          lineData.push({ date: label, created, completed });
+        }
+
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Status pie chart */}
+            <div className="bg-white rounded-lg border p-4">
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Status</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={2}
+                  >
+                    {pieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
+                    formatter={(value: number) => [value, "Tasks"]}
+                  />
+                  <Legend
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: "10px" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Priority pie chart */}
+            <div className="bg-white rounded-lg border p-4">
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Priority</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={priorityPieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={2}
+                  >
+                    {priorityPieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
+                    formatter={(value: number) => [value, "Tasks"]}
+                  />
+                  <Legend
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: "10px" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Activity line chart */}
+            <div className="bg-white rounded-lg border p-4">
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">Activity (Last 14 Days)</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={lineData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    allowDecimals={false}
+                    width={30}
+                  />
+                  <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
+                  <Line
+                    type="monotone"
+                    dataKey="created"
+                    stroke="#6366F1"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    name="Created"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="completed"
+                    stroke="#22C55E"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    name="Completed"
+                  />
+                  <Legend iconSize={8} wrapperStyle={{ fontSize: "10px" }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* What's Next section */}
       <div>

@@ -36,7 +36,7 @@ export const taskFilterSchema = z.object({
   status: z.enum(["created", "ready", "in_progress", "review", "completed", "blocked", "cancelled"]).optional(),
   priority: z.enum(["critical", "high", "medium", "low"]).optional(),
   assigneeId: z.string().uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
 

@@ -1,5 +1,5 @@
 import { createDb } from "./index.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   tenants, users, projects, phases, tasks,
   taskAssignments, taskDependencies, comments,
@@ -20,56 +20,76 @@ const db = createDb(DATABASE_URL);
 const PASSWORD_HASH = "$2b$12$5t6AFKiPivtsb99gBxVzbO2u9hk1tE.syBUYW7Uh0S/VYgMkSCr3G";
 
 async function seed() {
-  // Idempotent: skip if default tenant already has projects
-  const existing = await db.query.tenants.findFirst({
+  console.log("Seeding database with comprehensive demo data...");
+
+  // --- Find existing tenant ---
+  const existingTenant = await db.query.tenants.findFirst({
     where: eq(tenants.slug, "default"),
   });
-  if (existing) {
-    const existingProjects = await db.query.projects.findFirst({
-      where: eq(projects.tenantId, existing.id),
-    });
-    if (existingProjects) {
-      console.log("Seed data already exists, skipping.");
-      process.exit(0);
-    }
+  if (!existingTenant) {
+    console.error("No default tenant found. Run migrations first.");
+    process.exit(1);
+  }
+  const tid = existingTenant.id;
+
+  // --- Clean existing seed data (preserve tenant and existing users) ---
+  console.log("  Cleaning old data...");
+  await db.delete(notifications).where(eq(notifications.tenantId, tid));
+  await db.delete(auditLog).where(eq(auditLog.tenantId, tid));
+  await db.delete(taskReminders).where(eq(taskReminders.tenantId, tid));
+  await db.delete(recurringTaskConfigs).where(eq(recurringTaskConfigs.tenantId, tid));
+  await db.delete(taskTags).where(
+    sql`task_id IN (SELECT id FROM tasks WHERE tenant_id = ${tid})`
+  );
+  await db.delete(taskAssignments).where(
+    sql`task_id IN (SELECT id FROM tasks WHERE tenant_id = ${tid})`
+  );
+  await db.delete(checklistItems).where(
+    sql`checklist_id IN (SELECT tc.id FROM task_checklists tc JOIN tasks t ON tc.task_id = t.id WHERE t.tenant_id = ${tid})`
+  );
+  await db.delete(taskChecklists).where(eq(taskChecklists.tenantId, tid));
+  await db.delete(comments).where(eq(comments.tenantId, tid));
+  await db.delete(taskDependencies).where(eq(taskDependencies.tenantId, tid));
+  await db.delete(tasks).where(eq(tasks.tenantId, tid));
+  await db.delete(phases).where(eq(phases.tenantId, tid));
+  await db.delete(projects).where(eq(projects.tenantId, tid));
+  await db.delete(tags).where(eq(tags.tenantId, tid));
+
+  // --- Ensure we have enough users with varied roles ---
+  const existingUsers = await db.select().from(users).where(eq(users.tenantId, tid));
+
+  // Update first user to site_admin if exists
+  if (existingUsers.length > 0) {
+    await db.update(users).set({ role: "site_admin", name: "Alice Chen" }).where(eq(users.id, existingUsers[0]!.id));
+  }
+  if (existingUsers.length > 1) {
+    await db.update(users).set({ role: "pm", name: "Bob Martinez" }).where(eq(users.id, existingUsers[1]!.id));
+  }
+  if (existingUsers.length > 2) {
+    await db.update(users).set({ role: "developer", name: "Carol Johnson" }).where(eq(users.id, existingUsers[2]!.id));
   }
 
-  console.log("Seeding database with demo data...");
+  // Create additional users if fewer than 5
+  const extraUsers: Array<{ email: string; name: string; role: string }> = [];
+  if (existingUsers.length < 4) extraUsers.push({ email: "dave@demo.com", name: "Dave Kim", role: "developer" });
+  if (existingUsers.length < 5) extraUsers.push({ email: "eve@demo.com", name: "Eve Williams", role: "developer" });
 
-  // --- Tenant ---
-  let tenant: { id: string };
-  if (existing) {
-    tenant = existing;
-  } else {
-    const [created] = await db.insert(tenants).values({
-      name: "Default Tenant",
-      slug: "default",
-      planTier: "pro",
-    }).returning();
-    tenant = created!;
+  if (extraUsers.length > 0) {
+    await db.insert(users).values(
+      extraUsers.map((u) => ({
+        tenantId: tid,
+        email: u.email,
+        passwordHash: PASSWORD_HASH,
+        name: u.name,
+        role: u.role,
+      }))
+    ).returning();
   }
-  const tid = tenant.id;
 
-  // --- Users (all password: "password123") ---
-  const userDefs = [
-    { email: "alice@demo.com", name: "Alice Chen", role: "site_admin" as const },
-    { email: "bob@demo.com", name: "Bob Martinez", role: "pm" as const },
-    { email: "carol@demo.com", name: "Carol Johnson", role: "developer" as const },
-    { email: "dave@demo.com", name: "Dave Kim", role: "developer" as const },
-    { email: "eve@demo.com", name: "Eve Williams", role: "developer" as const },
-  ];
+  // Re-fetch all users after updates
+  const allUsers = await db.select().from(users).where(eq(users.tenantId, tid));
 
-  const insertedUsers = await db.insert(users).values(
-    userDefs.map((u) => ({
-      tenantId: tid,
-      email: u.email,
-      passwordHash: PASSWORD_HASH,
-      name: u.name,
-      role: u.role,
-    }))
-  ).returning();
-
-  const [alice, bob, carol, dave, eve] = insertedUsers;
+  console.log(`  ${allUsers.length} users ready`);
 
   // --- Tags ---
   const tagDefs = [
@@ -83,16 +103,18 @@ async function seed() {
   const insertedTags = await db.insert(tags).values(
     tagDefs.map((t) => ({ tenantId: tid, name: t.name, color: t.color }))
   ).returning();
+  console.log(`  ${insertedTags.length} tags created`);
 
   // --- Projects ---
   const projectDefs = [
-    { name: "Platform Rebuild", description: "Complete rewrite of the core platform using Next.js and Fastify", status: "active" },
-    { name: "Mobile App", description: "iOS and Android companion app for field consultants", status: "active" },
-    { name: "Data Migration", description: "Migrate legacy client data from Oracle to PostgreSQL", status: "active" },
+    { name: "Platform Rebuild", description: "Complete rewrite of the core platform using Next.js and Fastify. Includes auth, dashboard, task management, and AI features.", status: "active" },
+    { name: "Mobile App", description: "iOS and Android companion app for field consultants. React Native with offline sync capability.", status: "active" },
+    { name: "Data Migration", description: "Migrate legacy client data from Oracle to PostgreSQL. ETL pipeline with data validation and rollback support.", status: "active" },
   ];
   const insertedProjects = await db.insert(projects).values(
     projectDefs.map((p) => ({ tenantId: tid, ...p }))
   ).returning();
+  console.log(`  ${insertedProjects.length} projects created`);
 
   const allTasks: Array<{ id: string; projectId: string; title: string }> = [];
 
@@ -108,23 +130,23 @@ async function seed() {
       }))
     ).returning();
 
-    // --- Tasks (15 per project, 45 total) ---
+    // --- Tasks (15 per project) ---
     const taskDefs = [
-      { title: "Set up project repository", status: "completed", priority: "high", phase: 0 },
-      { title: "Define database schema", status: "completed", priority: "high", phase: 0 },
-      { title: "Create wireframes", status: "completed", priority: "medium", phase: 0 },
-      { title: "Implement user authentication", status: "completed", priority: "critical", phase: 1 },
-      { title: "Build dashboard UI", status: "in_progress", priority: "high", phase: 1 },
-      { title: "Create REST API endpoints", status: "in_progress", priority: "high", phase: 1 },
-      { title: "Implement search functionality", status: "in_progress", priority: "medium", phase: 1 },
-      { title: "Add file upload support", status: "ready", priority: "medium", phase: 1 },
-      { title: "Set up CI/CD pipeline", status: "ready", priority: "high", phase: 1 },
-      { title: "Write unit tests", status: "ready", priority: "medium", phase: 2 },
-      { title: "Integration testing", status: "created", priority: "high", phase: 2 },
-      { title: "Performance optimization", status: "created", priority: "low", phase: 2 },
-      { title: "Security audit", status: "created", priority: "critical", phase: 2 },
-      { title: "Deploy to staging", status: "created", priority: "high", phase: 3 },
-      { title: "Production rollout", status: "created", priority: "critical", phase: 3 },
+      { title: "Set up project repository", status: "completed", priority: "high", phase: 0, effort: "4" },
+      { title: "Define database schema", status: "completed", priority: "high", phase: 0, effort: "8" },
+      { title: "Create wireframes and mockups", status: "completed", priority: "medium", phase: 0, effort: "16" },
+      { title: "Implement user authentication", status: "completed", priority: "critical", phase: 1, effort: "24" },
+      { title: "Build dashboard UI", status: "in_progress", priority: "high", phase: 1, effort: "20" },
+      { title: "Create REST API endpoints", status: "in_progress", priority: "high", phase: 1, effort: "32" },
+      { title: "Implement search functionality", status: "in_progress", priority: "medium", phase: 1, effort: "12" },
+      { title: "Add file upload support", status: "ready", priority: "medium", phase: 1, effort: "16" },
+      { title: "Set up CI/CD pipeline", status: "ready", priority: "high", phase: 1, effort: "8" },
+      { title: "Write unit tests", status: "ready", priority: "medium", phase: 2, effort: "24" },
+      { title: "Integration testing", status: "created", priority: "high", phase: 2, effort: "20" },
+      { title: "Performance optimization", status: "created", priority: "low", phase: 2, effort: "16" },
+      { title: "Security audit", status: "created", priority: "critical", phase: 2, effort: "12" },
+      { title: "Deploy to staging", status: "created", priority: "high", phase: 3, effort: "8" },
+      { title: "Production rollout", status: "created", priority: "critical", phase: 3, effort: "4" },
     ];
 
     const insertedTasks = await db.insert(tasks).values(
@@ -133,20 +155,22 @@ async function seed() {
         projectId: project.id,
         phaseId: insertedPhases[t.phase]!.id,
         title: t.title,
-        description: `${t.title} for ${project.name}`,
+        description: `${t.title} for ${project.name}. This task covers all relevant subtasks and deliverables.`,
         status: t.status,
         priority: t.priority,
-        assigneeId: insertedUsers[i % insertedUsers.length]!.id,
+        assigneeId: allUsers[i % allUsers.length]!.id,
         position: i,
-        dueDate: new Date(Date.now() + (i - 5) * 86400000 * 2).toISOString(),
+        estimatedEffort: t.effort,
+        dueDate: new Date(Date.now() + (i - 5) * 86400000 * 2),
+        completedAt: t.status === "completed" ? new Date(Date.now() - (10 - i) * 86400000) : null,
       }))
     ).returning();
 
     allTasks.push(...insertedTasks.map((t) => ({ id: t.id, projectId: project.id, title: t.title })));
 
-    // --- Task Assignments (multiple assignees on some tasks) ---
-    for (let i = 0; i < Math.min(5, insertedTasks.length); i++) {
-      const secondAssignee = insertedUsers[(i + 2) % insertedUsers.length]!;
+    // --- Task Assignments (multi-assignee on first 8 tasks) ---
+    for (let i = 0; i < Math.min(8, insertedTasks.length); i++) {
+      const secondAssignee = allUsers[(i + 2) % allUsers.length]!;
       await db.insert(taskAssignments).values({
         taskId: insertedTasks[i]!.id,
         userId: secondAssignee.id,
@@ -160,56 +184,94 @@ async function seed() {
         taskId: insertedTasks[i]!.id,
         tagId: tag.id,
       }).onConflictDoNothing();
+      // Add second tag to some tasks
+      if (i % 3 === 0) {
+        const tag2 = insertedTags[(i + 3) % insertedTags.length]!;
+        await db.insert(taskTags).values({
+          taskId: insertedTasks[i]!.id,
+          tagId: tag2.id,
+        }).onConflictDoNothing();
+      }
     }
 
-    // --- Dependencies (task 10 blocked by task 5, task 13 blocked by task 10) ---
+    // --- Dependencies ---
     if (insertedTasks.length >= 14) {
       await db.insert(taskDependencies).values([
         {
           tenantId: tid,
           blockerTaskId: insertedTasks[4]!.id,
           blockedTaskId: insertedTasks[9]!.id,
-          dependencyType: "finish_to_start",
+          type: "blocks",
         },
         {
           tenantId: tid,
           blockerTaskId: insertedTasks[9]!.id,
           blockedTaskId: insertedTasks[12]!.id,
-          dependencyType: "finish_to_start",
+          type: "blocks",
+        },
+        {
+          tenantId: tid,
+          blockerTaskId: insertedTasks[5]!.id,
+          blockedTaskId: insertedTasks[10]!.id,
+          type: "blocks",
         },
       ]);
     }
 
-    // --- Comments on first 5 tasks ---
-    for (let i = 0; i < Math.min(5, insertedTasks.length); i++) {
-      const commenter = insertedUsers[(i + 1) % insertedUsers.length]!;
+    // --- Comments on first 7 tasks ---
+    const commentBodies = [
+      "Great progress on this. The implementation looks solid.",
+      "Can we schedule a quick review? I have a few suggestions.",
+      "This is blocked waiting on the API changes. Let me know when ready.",
+      "Updated the approach based on yesterday's discussion. LGTM now.",
+      "Found an edge case we need to handle — see linked issue.",
+      "Tests are passing. Ready for code review.",
+      "Pushed a fix for the regression. Please re-test.",
+    ];
+    for (let i = 0; i < Math.min(7, insertedTasks.length); i++) {
+      const commenter = allUsers[(i + 1) % allUsers.length]!;
       await db.insert(comments).values({
         tenantId: tid,
         taskId: insertedTasks[i]!.id,
         authorId: commenter.id,
-        body: `This looks good. Let me know if you need help with "${insertedTasks[i]!.title}".`,
+        body: commentBodies[i]!,
       });
+      // Add a second comment on first 3 tasks
+      if (i < 3) {
+        const commenter2 = allUsers[(i + 3) % allUsers.length]!;
+        await db.insert(comments).values({
+          tenantId: tid,
+          taskId: insertedTasks[i]!.id,
+          authorId: commenter2.id,
+          body: `Agreed with the above. Let's finalize "${insertedTasks[i]!.title}" this sprint.`,
+        });
+      }
     }
 
-    // --- Checklists on first 3 tasks ---
-    for (let i = 0; i < Math.min(3, insertedTasks.length); i++) {
+    // --- Checklists on first 5 tasks ---
+    for (let i = 0; i < Math.min(5, insertedTasks.length); i++) {
       const [checklist] = await db.insert(taskChecklists).values({
         tenantId: tid,
         taskId: insertedTasks[i]!.id,
-        title: "Acceptance Criteria",
+        title: i < 3 ? "Acceptance Criteria" : "Pre-launch Checklist",
       }).returning();
 
-      const items = ["Review requirements", "Write implementation", "Add tests", "Update docs"];
+      const items = i < 3
+        ? ["Review requirements", "Write implementation", "Add unit tests", "Update documentation"]
+        : ["Code review approved", "QA sign-off", "Performance benchmarks passed", "Security scan clean"];
+      const completedCount = i === 0 ? 4 : i === 1 ? 3 : i === 2 ? 2 : i === 3 ? 1 : 0;
       for (let j = 0; j < items.length; j++) {
         await db.insert(checklistItems).values({
           checklistId: checklist!.id,
           label: items[j]!,
-          completed: j < (i === 0 ? 4 : i === 1 ? 2 : 0),
+          completed: j < completedCount,
           position: j,
         });
       }
     }
   }
+
+  console.log(`  ${allTasks.length} tasks created across ${insertedProjects.length} projects`);
 
   // --- Recurring Tasks ---
   await db.insert(recurringTaskConfigs).values([
@@ -217,68 +279,114 @@ async function seed() {
       tenantId: tid,
       projectId: insertedProjects[0]!.id,
       title: "Weekly standup notes",
-      description: "Summarize weekly standup discussion points",
+      description: "Summarize weekly standup discussion points and action items",
       priority: "medium",
       schedule: "weekly",
       cronExpression: "0 9 * * 1",
       enabled: true,
+      createdBy: allUsers[1]?.id ?? allUsers[0]!.id,
     },
     {
       tenantId: tid,
       projectId: insertedProjects[0]!.id,
       title: "Monthly security review",
-      description: "Review security logs and update dependencies",
+      description: "Review security logs, update dependencies, and run vulnerability scans",
       priority: "high",
       schedule: "monthly",
       cronExpression: "0 10 1 * *",
       enabled: true,
+      createdBy: allUsers[0]!.id,
+    },
+    {
+      tenantId: tid,
+      projectId: insertedProjects[1]!.id,
+      title: "Sprint retrospective",
+      description: "Bi-weekly sprint retrospective and velocity review",
+      priority: "medium",
+      schedule: "weekly",
+      cronExpression: "0 15 * * 5",
+      enabled: true,
+      createdBy: allUsers[1]?.id ?? allUsers[0]!.id,
     },
   ]);
+  console.log("  3 recurring task configs created");
 
-  // --- Reminders (on first 3 tasks) ---
-  for (let i = 0; i < Math.min(3, allTasks.length); i++) {
+  // --- Reminders ---
+  for (let i = 0; i < Math.min(6, allTasks.length); i++) {
     await db.insert(taskReminders).values({
       tenantId: tid,
       taskId: allTasks[i]!.id,
-      userId: insertedUsers[i % insertedUsers.length]!.id,
-      remindAt: new Date(Date.now() + (i + 1) * 86400000).toISOString(),
-      channel: "in_app",
+      userId: allUsers[i % allUsers.length]!.id,
+      remindAt: new Date(Date.now() + (i + 1) * 86400000),
+      channel: i % 3 === 0 ? "email" : "in_app",
     });
   }
+  console.log("  6 task reminders created");
 
-  // --- Notifications for alice ---
-  const notifDefs = [
-    { type: "task_assigned", title: "New task assigned", body: "You've been assigned 'Build dashboard UI'" },
-    { type: "comment_added", title: "New comment", body: "Bob commented on 'Create REST API endpoints'" },
-    { type: "task_status", title: "Task completed", body: "Carol completed 'Set up project repository'" },
-    { type: "mention", title: "You were mentioned", body: "Dave mentioned you in 'Implement search functionality'" },
+  // --- Notifications for ALL users ---
+  const notifTemplates = [
+    { type: "task_assigned", title: "New task assigned", body: "You've been assigned 'Build dashboard UI' on Platform Rebuild" },
+    { type: "comment_added", title: "New comment", body: "Someone commented on 'Create REST API endpoints'" },
+    { type: "task_status", title: "Task completed", body: "'Set up project repository' was marked as completed" },
+    { type: "mention", title: "You were mentioned", body: "You were mentioned in a comment on 'Implement search functionality'" },
     { type: "deadline", title: "Deadline approaching", body: "'Security audit' is due in 2 days" },
+    { type: "task_assigned", title: "Task reassigned", body: "'Performance optimization' has been reassigned to you" },
+    { type: "comment_added", title: "Reply to your comment", body: "Someone replied to your comment on 'Define database schema'" },
+    { type: "task_status", title: "Task moved to In Progress", body: "'Write unit tests' was moved to In Progress" },
   ];
-  await db.insert(notifications).values(
-    notifDefs.map((n) => ({
-      tenantId: tid,
-      userId: alice!.id,
-      type: n.type,
-      title: n.title,
-      body: n.body,
-    }))
-  );
+
+  const notifValues: Array<{
+    tenantId: string;
+    userId: string;
+    type: string;
+    title: string;
+    body: string;
+  }> = [];
+
+  for (const user of allUsers) {
+    for (const tmpl of notifTemplates) {
+      notifValues.push({
+        tenantId: tid,
+        userId: user.id,
+        type: tmpl.type,
+        title: tmpl.title,
+        body: tmpl.body,
+      });
+    }
+  }
+  await db.insert(notifications).values(notifValues);
+  console.log(`  ${notifValues.length} notifications created (${notifTemplates.length} per user)`);
 
   // --- Audit log entries ---
-  await db.insert(auditLog).values([
-    { tenantId: tid, userId: alice!.id, action: "project.created", entityType: "project", entityId: insertedProjects[0]!.id },
-    { tenantId: tid, userId: bob!.id, action: "task.created", entityType: "task", entityId: allTasks[0]!.id },
-    { tenantId: tid, userId: carol!.id, action: "task.status_changed", entityType: "task", entityId: allTasks[3]!.id },
-    { tenantId: tid, userId: dave!.id, action: "comment.created", entityType: "comment", entityId: allTasks[1]!.id },
-  ]);
+  const auditEntries = [
+    { actorId: allUsers[0]!.id, action: "project.created", entityType: "project", entityId: insertedProjects[0]!.id },
+    { actorId: allUsers[0]!.id, action: "project.created", entityType: "project", entityId: insertedProjects[1]!.id },
+    { actorId: allUsers[0]!.id, action: "project.created", entityType: "project", entityId: insertedProjects[2]!.id },
+    { actorId: allUsers[1]?.id ?? allUsers[0]!.id, action: "task.created", entityType: "task", entityId: allTasks[0]!.id },
+    { actorId: allUsers[1]?.id ?? allUsers[0]!.id, action: "task.created", entityType: "task", entityId: allTasks[5]!.id },
+    { actorId: allUsers[2]?.id ?? allUsers[0]!.id, action: "task.status_changed", entityType: "task", entityId: allTasks[3]!.id, diff: { field: "status", from: "in_progress", to: "completed" } },
+    { actorId: allUsers[2]?.id ?? allUsers[0]!.id, action: "task.status_changed", entityType: "task", entityId: allTasks[0]!.id, diff: { field: "status", from: "ready", to: "completed" } },
+    { actorId: allUsers[3]?.id ?? allUsers[0]!.id, action: "comment.created", entityType: "comment", entityId: allTasks[1]!.id },
+    { actorId: allUsers[0]!.id, action: "user.invited", entityType: "user", entityId: allUsers[allUsers.length - 1]!.id },
+  ];
+  await db.insert(auditLog).values(
+    auditEntries.map((e) => ({
+      tenantId: tid,
+      actorId: e.actorId,
+      action: e.action,
+      entityType: e.entityType,
+      entityId: e.entityId,
+      diff: "diff" in e ? e.diff : null,
+    }))
+  );
+  console.log(`  ${auditEntries.length} audit log entries created`);
 
-  console.log("Seed complete:");
-  console.log("  1 tenant (Default Tenant)");
-  console.log("  5 users (password: password123)");
-  console.log("  6 tags");
-  console.log("  3 projects, 12 phases, 45 tasks");
-  console.log("  Comments, checklists, dependencies, assignments");
-  console.log("  Notifications, reminders, recurring tasks, audit log");
+  console.log("\nSeed complete!");
+  console.log(`  Tenant: ${existingTenant.name} (${tid})`);
+  console.log(`  ${allUsers.length} users (existing passwords preserved, new users: password123)`);
+  console.log(`  ${insertedTags.length} tags`);
+  console.log(`  ${insertedProjects.length} projects, ${insertedProjects.length * 4} phases, ${allTasks.length} tasks`);
+  console.log("  Comments, checklists, dependencies, assignments, notifications, reminders, audit log");
   process.exit(0);
 }
 

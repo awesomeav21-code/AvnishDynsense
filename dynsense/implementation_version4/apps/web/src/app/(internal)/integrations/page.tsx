@@ -93,6 +93,23 @@ export default function IntegrationsPage() {
   const getIntegration = (provider: string) =>
     integrations.find((i) => i.provider === provider);
 
+  const handleConnect = useCallback(async (providerKey: string, oauthUrl: string) => {
+    setSavingProvider(providerKey);
+    setError("");
+    try {
+      const res = await api.request<{ redirectUrl: string }>(oauthUrl.replace("/api/v1", ""));
+      if (res.redirectUrl) {
+        window.location.href = res.redirectUrl;
+      } else {
+        setError("No redirect URL returned from server");
+      }
+    } catch {
+      setError(`Failed to start ${providerKey} connection`);
+    } finally {
+      setSavingProvider(null);
+    }
+  }, []);
+
   const webhookUrl = typeof window !== "undefined"
     ? `${window.location.origin}/api/v1/github/webhook`
     : "/api/v1/github/webhook";
@@ -158,12 +175,13 @@ export default function IntegrationsPage() {
                 <div className="flex items-center gap-2">
                   {/* Connect / Disconnect buttons */}
                   {provider.oauthUrl && !hasToken && (
-                    <a
-                      href={provider.oauthUrl}
-                      className="text-xs px-3 py-1.5 font-medium text-white bg-ai rounded-md hover:bg-ai/90"
+                    <button
+                      onClick={() => handleConnect(provider.key, provider.oauthUrl!)}
+                      disabled={isSaving}
+                      className="text-xs px-3 py-1.5 font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50"
                     >
-                      Connect
-                    </a>
+                      {isSaving ? "Connecting..." : "Connect"}
+                    </button>
                   )}
                   {hasToken && (
                     <button

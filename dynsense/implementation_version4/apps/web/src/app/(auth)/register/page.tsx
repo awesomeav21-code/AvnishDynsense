@@ -9,7 +9,6 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tenantId, setTenantId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -19,8 +18,9 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await api.register({ email, password, name, tenantId: tenantId || undefined });
-      router.push("/login?registered=true");
+      const res = await api.register({ email, password, name });
+      api.setTokens(res.accessToken, res.refreshToken);
+      router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -92,20 +92,6 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
               placeholder="Min 8 characters"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="tenantId" className="block text-xs font-medium text-gray-700 mb-1">
-              Tenant ID <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <input
-              id="tenantId"
-              type="text"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
-              placeholder="Leave blank for default tenant"
             />
           </div>
 

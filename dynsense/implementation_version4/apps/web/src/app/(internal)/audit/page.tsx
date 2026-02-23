@@ -8,7 +8,8 @@ interface AuditEntry {
   action: string;
   entityType: string;
   entityId: string;
-  userId: string;
+  actorId: string | null;
+  actorType: string;
   createdAt: string;
 }
 
@@ -73,9 +74,9 @@ export default function AuditLogPage() {
 
   function handleExport() {
     const csv = [
-      "Action,Entity Type,Entity ID,User ID,Timestamp",
+      "Action,Entity Type,Entity ID,Actor ID,Actor Type,Timestamp",
       ...entries.map((e) =>
-        `"${e.action}","${e.entityType}","${e.entityId}","${e.userId}","${e.createdAt}"`
+        `"${e.action}","${e.entityType}","${e.entityId}","${e.actorId ?? ""}","${e.actorType}","${e.createdAt}"`
       ),
     ].join("\n");
 
@@ -203,10 +204,10 @@ export default function AuditLogPage() {
                   <span className="font-medium text-gray-900">{entry.action}</span>
                   <span className="text-gray-500"> on </span>
                   <span className="font-medium text-gray-700">{entry.entityType}</span>
-                  <span className="text-gray-400 ml-1 font-mono text-[10px]">{entry.entityId.slice(0, 8)}...</span>
+                  <span className="text-gray-400 ml-1 font-mono text-[10px]">{entry.entityId?.slice(0, 8) ?? "—"}...</span>
                 </div>
                 <div className="text-[10px] text-gray-400 mt-0.5">
-                  User: <span className="font-mono">{entry.userId.slice(0, 8)}...</span>
+                  {entry.actorType === "ai" ? "AI" : "User"}: <span className="font-mono">{entry.actorId?.slice(0, 8) ?? "system"}...</span>
                 </div>
               </div>
               <span className="text-xs text-gray-400 whitespace-nowrap">

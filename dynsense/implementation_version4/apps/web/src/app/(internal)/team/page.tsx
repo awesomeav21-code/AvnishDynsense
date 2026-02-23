@@ -210,7 +210,7 @@ export default function TeamPage() {
                     autoFocus
                     value={user.role}
                     onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                    onBlur={() => setEditingRoleId(null)}
+                    onBlur={() => setTimeout(() => setEditingRoleId(null), 150)}
                     className="text-xs px-2 py-0.5 border rounded"
                   >
                     {ROLES.map((r) => (

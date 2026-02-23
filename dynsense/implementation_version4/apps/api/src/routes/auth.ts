@@ -63,7 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
       email: body.email,
       passwordHash,
       name: body.name,
-      role: "developer",
+      role: "site_admin",
     }).returning();
 
     if (!user) throw AppError.badRequest("Failed to create user");

@@ -23,6 +23,14 @@ export function errorHandler(
     });
   }
 
+  // Handle Fastify built-in errors (e.g. FST_ERR_CTP_EMPTY_JSON_BODY)
+  if (error.statusCode && error.statusCode < 500) {
+    return reply.status(error.statusCode).send({
+      error: error.code ?? "REQUEST_ERROR",
+      message: error.message,
+    });
+  }
+
   // 500 fallback — show real error in development
   console.error("Unhandled error:", error);
   const isDev = process.env.NODE_ENV !== "production";

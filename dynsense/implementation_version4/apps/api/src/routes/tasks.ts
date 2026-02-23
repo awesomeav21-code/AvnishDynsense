@@ -46,9 +46,8 @@ export async function taskRoutes(app: FastifyInstance) {
     const { tenantId, sub: userId } = request.jwtPayload;
     const now = new Date();
 
-    // 1. Get all tasks assigned to current user that are not completed/cancelled/deleted
-    const terminalStatuses = ["completed", "cancelled"];
-    const userTasks = await db.select().from(tasks)
+    // 1. Get tasks assigned to current user OR unassigned, that are not completed/cancelled/deleted
+    const assignedTasks = await db.select().from(tasks)
       .where(and(
         eq(tasks.tenantId, tenantId),
         eq(tasks.assigneeId, userId),
@@ -56,6 +55,16 @@ export async function taskRoutes(app: FastifyInstance) {
         ne(tasks.status, "completed"),
         ne(tasks.status, "cancelled"),
       ));
+    const unassignedTasks = await db.select().from(tasks)
+      .where(and(
+        eq(tasks.tenantId, tenantId),
+        isNull(tasks.assigneeId),
+        isNull(tasks.deletedAt),
+        ne(tasks.status, "completed"),
+        ne(tasks.status, "cancelled"),
+      ));
+    const seenIds = new Set(assignedTasks.map((t) => t.id));
+    const userTasks = [...assignedTasks, ...unassignedTasks.filter((t) => !seenIds.has(t.id))];
 
     if (userTasks.length === 0) {
       return { data: [] };
@@ -134,6 +143,8 @@ export async function taskRoutes(app: FastifyInstance) {
         reason = `Due in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`;
       } else if (task.priority === "critical" || task.priority === "high") {
         reason = `${task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} priority task`;
+      } else if (!task.assigneeId) {
+        reason = "Unassigned — available to pick up";
       } else {
         reason = "Assigned to you";
       }
