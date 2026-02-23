@@ -130,24 +130,55 @@ async function seed() {
       }))
     ).returning();
 
-    // --- Tasks (15 per project) ---
-    const taskDefs = [
-      { title: "Set up project repository", status: "completed", priority: "high", phase: 0, effort: "4" },
-      { title: "Define database schema", status: "completed", priority: "high", phase: 0, effort: "8" },
-      { title: "Create wireframes and mockups", status: "completed", priority: "medium", phase: 0, effort: "16" },
-      { title: "Implement user authentication", status: "completed", priority: "critical", phase: 1, effort: "24" },
-      { title: "Build dashboard UI", status: "in_progress", priority: "high", phase: 1, effort: "20" },
-      { title: "Create REST API endpoints", status: "in_progress", priority: "high", phase: 1, effort: "32" },
-      { title: "Implement search functionality", status: "in_progress", priority: "medium", phase: 1, effort: "12" },
-      { title: "Add file upload support", status: "ready", priority: "medium", phase: 1, effort: "16" },
-      { title: "Set up CI/CD pipeline", status: "ready", priority: "high", phase: 1, effort: "8" },
-      { title: "Write unit tests", status: "ready", priority: "medium", phase: 2, effort: "24" },
-      { title: "Integration testing", status: "created", priority: "high", phase: 2, effort: "20" },
-      { title: "Performance optimization", status: "created", priority: "low", phase: 2, effort: "16" },
-      { title: "Security audit", status: "created", priority: "critical", phase: 2, effort: "12" },
-      { title: "Deploy to staging", status: "created", priority: "high", phase: 3, effort: "8" },
-      { title: "Production rollout", status: "created", priority: "critical", phase: 3, effort: "4" },
-    ];
+    // --- Tasks (varied count per project) ---
+    const taskDefsByProject: Record<string, Array<{ title: string; status: string; priority: string; phase: number; effort: string }>> = {
+      "Platform Rebuild": [
+        { title: "Set up monorepo with Turborepo", status: "completed", priority: "high", phase: 0, effort: "4" },
+        { title: "Define PostgreSQL schema and migrations", status: "completed", priority: "high", phase: 0, effort: "8" },
+        { title: "Create Figma wireframes for dashboard", status: "completed", priority: "medium", phase: 0, effort: "16" },
+        { title: "Write technical design document", status: "completed", priority: "medium", phase: 0, effort: "10" },
+        { title: "Implement JWT authentication flow", status: "in_progress", priority: "critical", phase: 1, effort: "24" },
+        { title: "Build admin dashboard with charts", status: "in_progress", priority: "high", phase: 1, effort: "20" },
+        { title: "Create Fastify REST API routes", status: "in_progress", priority: "high", phase: 1, effort: "32" },
+        { title: "Add full-text search with pg_trgm", status: "in_progress", priority: "critical", phase: 1, effort: "12" },
+        { title: "Implement S3 file upload service", status: "ready", priority: "high", phase: 1, effort: "16" },
+        { title: "Configure GitHub Actions CI/CD", status: "ready", priority: "critical", phase: 1, effort: "8" },
+        { title: "Build WebSocket real-time notifications", status: "ready", priority: "medium", phase: 1, effort: "14" },
+        { title: "Write Vitest unit test suite", status: "ready", priority: "high", phase: 2, effort: "24" },
+        { title: "API integration tests with Supertest", status: "created", priority: "high", phase: 2, effort: "20" },
+        { title: "Lighthouse performance audit", status: "created", priority: "low", phase: 2, effort: "16" },
+        { title: "OWASP security vulnerability scan", status: "blocked", priority: "critical", phase: 2, effort: "12" },
+        { title: "Set up Sentry error monitoring", status: "created", priority: "medium", phase: 2, effort: "6" },
+        { title: "Deploy to Vercel staging environment", status: "created", priority: "high", phase: 3, effort: "8" },
+        { title: "Production cutover and DNS switch", status: "created", priority: "critical", phase: 3, effort: "4" },
+      ],
+      "Mobile App": [
+        { title: "Initialize React Native project", status: "completed", priority: "high", phase: 0, effort: "4" },
+        { title: "Design mobile UI component library", status: "completed", priority: "medium", phase: 0, effort: "12" },
+        { title: "Build biometric login screen", status: "in_progress", priority: "critical", phase: 1, effort: "16" },
+        { title: "Create task list with pull-to-refresh", status: "in_progress", priority: "medium", phase: 1, effort: "20" },
+        { title: "Implement push notification service", status: "in_progress", priority: "high", phase: 1, effort: "24" },
+        { title: "Build offline queue with WatermelonDB", status: "blocked", priority: "critical", phase: 1, effort: "32" },
+        { title: "Add camera integration for attachments", status: "ready", priority: "low", phase: 1, effort: "12" },
+        { title: "Set up Fastlane for automated builds", status: "ready", priority: "medium", phase: 1, effort: "8" },
+        { title: "Write Detox end-to-end tests", status: "ready", priority: "low", phase: 2, effort: "24" },
+        { title: "App Store and Play Store compliance review", status: "created", priority: "high", phase: 2, effort: "8" },
+        { title: "Public app store release", status: "created", priority: "critical", phase: 3, effort: "4" },
+      ],
+      "Data Migration": [
+        { title: "Audit legacy Oracle database schema", status: "completed", priority: "high", phase: 0, effort: "8" },
+        { title: "Map Oracle-to-PostgreSQL column types", status: "completed", priority: "medium", phase: 0, effort: "12" },
+        { title: "Build ETL pipeline with Node.js streams", status: "in_progress", priority: "critical", phase: 1, effort: "32" },
+        { title: "Create data cleansing and dedup scripts", status: "in_progress", priority: "high", phase: 1, effort: "20" },
+        { title: "Implement incremental sync for live data", status: "blocked", priority: "critical", phase: 1, effort: "24" },
+        { title: "Validate migrated data against source", status: "ready", priority: "medium", phase: 2, effort: "20" },
+        { title: "Run full dry-run migration on staging", status: "created", priority: "high", phase: 2, effort: "16" },
+        { title: "Client sign-off on data accuracy report", status: "blocked", priority: "critical", phase: 2, effort: "8" },
+        { title: "Execute production migration during maintenance window", status: "created", priority: "high", phase: 3, effort: "6" },
+      ],
+    };
+
+    const taskDefs = taskDefsByProject[project.name] ?? taskDefsByProject["Platform Rebuild"]!;
 
     const insertedTasks = await db.insert(tasks).values(
       taskDefs.map((t, i) => ({
@@ -161,7 +192,7 @@ async function seed() {
         assigneeId: allUsers[i % allUsers.length]!.id,
         position: i,
         estimatedEffort: t.effort,
-        dueDate: new Date(Date.now() + (i - 5) * 86400000 * 2),
+        dueDate: new Date(Date.now() + (i - (3 + insertedProjects.indexOf(project) * 2)) * 86400000 * 2),
         completedAt: t.status === "completed" ? new Date(Date.now() - (10 - i) * 86400000) : null,
       }))
     ).returning();

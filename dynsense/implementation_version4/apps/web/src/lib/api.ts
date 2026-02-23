@@ -268,7 +268,7 @@ class ApiClient {
     if (params?.entityType) query.set("entityType", params.entityType);
     if (params?.entityId) query.set("entityId", params.entityId);
     if (params?.limit) query.set("limit", String(params.limit));
-    if (params?.offset) query.set("offset", String(params.offset));
+    if (params?.offset != null) query.set("offset", String(params.offset));
     if (params?.search) query.set("search", params.search);
     if (params?.startDate) query.set("startDate", params.startDate);
     if (params?.endDate) query.set("endDate", params.endDate);

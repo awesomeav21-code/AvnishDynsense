@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, desc } from "drizzle-orm";
-import { auditLog } from "@dynsense/db";
+import { eq, and, desc, inArray } from "drizzle-orm";
+import { auditLog, users, tasks, projects } from "@dynsense/db";
 import { authenticate } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { getDb } from "../db.js";
@@ -37,7 +37,46 @@ export async function auditRoutes(app: FastifyInstance) {
       .limit(query.limit)
       .offset(query.offset);
 
-    return { data: rows };
+    // Resolve actor names and entity names for human-readable display
+    const actorIds = [...new Set(rows.map((r) => r.actorId).filter(Boolean))] as string[];
+    const entityIdsByType: Record<string, string[]> = {};
+    for (const row of rows) {
+      if (row.entityId) {
+        const t = row.entityType;
+        if (!entityIdsByType[t]) entityIdsByType[t] = [];
+        if (!entityIdsByType[t]!.includes(row.entityId)) entityIdsByType[t]!.push(row.entityId);
+      }
+    }
+
+    // Batch-fetch actor names
+    const actorMap: Record<string, string> = {};
+    if (actorIds.length > 0) {
+      const actorRows = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, actorIds));
+      for (const a of actorRows) actorMap[a.id] = a.name;
+    }
+
+    // Batch-fetch entity names by type
+    const entityNameMap: Record<string, string> = {};
+    if (entityIdsByType["task"]?.length) {
+      const taskRows = await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(inArray(tasks.id, entityIdsByType["task"]!));
+      for (const t of taskRows) entityNameMap[t.id] = t.title;
+    }
+    if (entityIdsByType["project"]?.length) {
+      const projRows = await db.select({ id: projects.id, name: projects.name }).from(projects).where(inArray(projects.id, entityIdsByType["project"]!));
+      for (const p of projRows) entityNameMap[p.id] = p.name;
+    }
+    if (entityIdsByType["user"]?.length) {
+      const userRows = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, entityIdsByType["user"]!));
+      for (const u of userRows) entityNameMap[u.id] = u.name;
+    }
+
+    const enriched = rows.map((row) => ({
+      ...row,
+      actorName: row.actorId ? (actorMap[row.actorId] ?? null) : null,
+      entityName: row.entityId ? (entityNameMap[row.entityId] ?? null) : null,
+    }));
+
+    return { data: enriched };
   });
 }
 

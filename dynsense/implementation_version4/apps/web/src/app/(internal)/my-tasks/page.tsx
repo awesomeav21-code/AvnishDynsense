@@ -73,6 +73,7 @@ export default function MyTasksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterProjectId, setFilterProjectId] = useState("all");
   const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
@@ -152,13 +153,14 @@ export default function MyTasksPage() {
     }
   }, [tasks]);
 
-  const filtered = filterStatus === "all" ? tasks : tasks.filter((t) => t.status === filterStatus);
+  const projectFiltered = filterProjectId === "all" ? tasks : tasks.filter((t) => t.projectId === filterProjectId);
+  const filtered = filterStatus === "all" ? projectFiltered : projectFiltered.filter((t) => t.status === filterStatus);
 
-  const urgentTasks = tasks.filter((t) =>
+  const urgentTasks = projectFiltered.filter((t) =>
     t.status !== "completed" && t.status !== "cancelled" &&
     (t.priority === "critical" || t.priority === "high")
   );
-  const overdueTasks = tasks.filter((t) =>
+  const overdueTasks = projectFiltered.filter((t) =>
     t.status !== "completed" && t.status !== "cancelled" &&
     t.dueDate && new Date(t.dueDate) < new Date()
   );
@@ -305,6 +307,39 @@ export default function MyTasksPage() {
                 </div>
               )}
 
+              {/* Project switcher */}
+              {projects.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => setFilterProjectId("all")}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      filterProjectId === "all"
+                        ? "bg-ai text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    All Projects ({tasks.length})
+                  </button>
+                  {projects.map((p) => {
+                    const count = tasks.filter((t) => t.projectId === p.id).length;
+                    if (count === 0) return null;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setFilterProjectId(p.id)}
+                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                          filterProjectId === p.id
+                            ? "bg-ai text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {p.name} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Status tabs */}
               <div className="flex gap-2 flex-wrap">
                 {statusTabs.map((s) => (
@@ -317,7 +352,7 @@ export default function MyTasksPage() {
                         : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                   >
-                    {s === "all" ? "All" : s.replace("_", " ")} ({s === "all" ? tasks.length : tasks.filter((t) => t.status === s).length})
+                    {s === "all" ? "All" : s.replace("_", " ")} ({s === "all" ? projectFiltered.length : projectFiltered.filter((t) => t.status === s).length})
                   </button>
                 ))}
               </div>
@@ -325,7 +360,7 @@ export default function MyTasksPage() {
               {/* Task list */}
               {filtered.length === 0 ? (
                 <div className="text-sm text-gray-500 bg-white rounded-lg border p-6 text-center">
-                  {tasks.length === 0 ? "No tasks assigned to you yet." : "No tasks match this filter."}
+                  {tasks.length === 0 ? "No tasks assigned to you yet." : "No tasks match the selected filters."}
                 </div>
               ) : (
                 <div className="bg-white rounded-lg border divide-y">

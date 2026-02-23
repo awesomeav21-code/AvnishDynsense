@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 interface AuditEntry {
   id: string;
@@ -10,6 +10,8 @@ interface AuditEntry {
   entityId: string;
   actorId: string | null;
   actorType: string;
+  actorName: string | null;
+  entityName: string | null;
   createdAt: string;
 }
 
@@ -43,8 +45,12 @@ export default function AuditLogPage() {
         setEntries(res.data);
       }
       setHasMore(res.data.length === PAGE_SIZE);
-    } catch {
-      setError("Failed to load audit log");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setError("You don't have permission to view the audit log. Only Admins and PMs can access this page.");
+      } else {
+        setError("Failed to load audit log");
+      }
     } finally {
       setLoading(false);
     }
@@ -201,13 +207,18 @@ export default function AuditLogPage() {
               <div className="flex-shrink-0 w-2 h-2 rounded-full bg-ai" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs">
-                  <span className="font-medium text-gray-900">{entry.action}</span>
+                  <span className="font-medium text-gray-900 capitalize">{entry.action.replace(/_/g, " ")}</span>
                   <span className="text-gray-500"> on </span>
-                  <span className="font-medium text-gray-700">{entry.entityType}</span>
-                  <span className="text-gray-400 ml-1 font-mono text-[10px]">{entry.entityId?.slice(0, 8) ?? "—"}...</span>
+                  <span className="font-medium text-gray-700 capitalize">{entry.entityType}</span>
+                  {entry.entityName ? (
+                    <span className="text-gray-600 ml-1">&ldquo;{entry.entityName}&rdquo;</span>
+                  ) : (
+                    <span className="text-gray-400 ml-1 font-mono text-[10px]">{entry.entityId?.slice(0, 8) ?? "—"}</span>
+                  )}
                 </div>
                 <div className="text-[10px] text-gray-400 mt-0.5">
-                  {entry.actorType === "ai" ? "AI" : "User"}: <span className="font-mono">{entry.actorId?.slice(0, 8) ?? "system"}...</span>
+                  {entry.actorType === "ai" ? "AI" : "By"}{" "}
+                  <span className="font-medium text-gray-500">{entry.actorName ?? (entry.actorId ? "Unknown user" : "System")}</span>
                 </div>
               </div>
               <span className="text-xs text-gray-400 whitespace-nowrap">

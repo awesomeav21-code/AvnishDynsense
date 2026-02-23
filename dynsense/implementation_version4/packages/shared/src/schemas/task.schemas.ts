@@ -10,7 +10,7 @@ export const createTaskSchema = z.object({
   phaseId: z.string().uuid().optional(),
   parentTaskId: z.string().uuid().optional(),
   priority: z.enum(["critical", "high", "medium", "low"]).default("medium"),
-  dueDate: z.string().datetime().optional(),
+  dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).optional(),
   estimatedEffort: z.number().positive().optional(),
 });
 
@@ -19,7 +19,7 @@ export const updateTaskSchema = z.object({
   description: z.string().max(10000).optional(),
   phaseId: z.string().uuid().nullable().optional(),
   priority: z.enum(["critical", "high", "medium", "low"]).optional(),
-  dueDate: z.string().datetime().nullable().optional(),
+  dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).nullable().optional(),
   estimatedEffort: z.number().positive().nullable().optional(),
 });
 
