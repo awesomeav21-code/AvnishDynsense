@@ -20,10 +20,23 @@ const roleColors: Record<string, string> = {
   client: "bg-gray-100 text-gray-600",
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  site_admin: "Admin",
+  pm: "PM",
+  developer: "Developer",
+  client: "Client",
+};
+
+function permissionError(userRole: string, action: string): string {
+  const label = ROLE_LABEL[userRole] ?? userRole;
+  return `You are logged in as a ${label}. Only Admins and PMs can ${action}.`;
+}
+
 export default function TeamPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
 
   // Invite form
   const [showInvite, setShowInvite] = useState(false);
@@ -37,10 +50,22 @@ export default function TeamPage() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    api.getUsers()
-      .then((res) => setUsers(res.data))
-      .catch(() => setError("Failed to load team members"))
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const res = await api.getUsers();
+        setUsers(res.data);
+      } catch {
+        setError("Failed to load team members");
+      }
+      try {
+        const meRes = await api.getMe();
+        setUserRole(meRes.role);
+      } catch {
+        /* ignore */
+      }
+      setLoading(false);
+    }
+    load();
   }, []);
 
   async function handleInvite() {
@@ -55,7 +80,10 @@ export default function TeamPage() {
       setInviteRole("developer");
       setShowInvite(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to invite user");
+      const msg = err instanceof Error && err.message.includes("Missing permission")
+        ? permissionError(userRole, "invite team members")
+        : err instanceof Error ? err.message : "Failed to invite user";
+      setError(msg);
     } finally {
       setInviting(false);
     }
@@ -68,9 +96,12 @@ export default function TeamPage() {
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: newRole } : u));
     try {
       await api.updateUserRole(userId, newRole);
-    } catch {
+    } catch (err) {
       if (original) setUsers((prev) => prev.map((u) => u.id === userId ? original : u));
-      setError("Failed to update role");
+      const msg = err instanceof Error && err.message.includes("Missing permission")
+        ? permissionError(userRole, "update roles")
+        : "Failed to update role";
+      setError(msg);
     } finally {
       setSavingIds((prev) => { const n = new Set(prev); n.delete(userId); return n; });
     }
@@ -82,8 +113,11 @@ export default function TeamPage() {
     try {
       await api.removeUser(userId);
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, status: "deactivated" } : u));
-    } catch {
-      setError("Failed to remove user");
+    } catch (err) {
+      const msg = err instanceof Error && err.message.includes("Missing permission")
+        ? permissionError(userRole, "remove team members")
+        : "Failed to remove user";
+      setError(msg);
     } finally {
       setSavingIds((prev) => { const n = new Set(prev); n.delete(userId); return n; });
     }
