@@ -4,8 +4,8 @@
 // Ref: FR-604 — Cross-project dependency flagging
 // Ref: FR-607 — Scope creep detection against WBS baseline
 import type { FastifyInstance } from "fastify";
-import { eq, and, lt, desc, isNull, ne, sql, gte, count } from "drizzle-orm";
-import { tasks, projects, aiActions, notifications, taskDependencies, tenantConfigs } from "@dynsense/db";
+import { eq, and, lt, lte, isNull, ne, sql, gte, count } from "drizzle-orm";
+import { tasks, projects, aiActions, notifications, taskDependencies, tenantConfigs, recurringTaskConfigs, taskReminders } from "@dynsense/db";
 import { AI_MAX_NUDGES_PER_TASK_PER_DAY } from "@dynsense/shared";
 import { AIOrchestrator } from "@dynsense/agents";
 import { authenticate } from "../middleware/auth.js";
@@ -288,4 +288,127 @@ export async function cronRoutes(app: FastifyInstance) {
 
     reply.status(201).send({ data: action });
   });
+
+  // POST /process-recurring — process due recurring task configs and create tasks
+  // Finds all recurringTaskConfigs where nextRunAt <= now and enabled=true,
+  // creates a new task for each, updates lastRunAt and computes next nextRunAt
+  app.post("/process-recurring", {
+    preHandler: [requirePermission("ai:execute")],
+  }, async (request, reply) => {
+    const { tenantId } = request.jwtPayload;
+    const now = new Date();
+
+    // Find all enabled recurring configs that are due
+    const dueConfigs = await db.select().from(recurringTaskConfigs)
+      .where(and(
+        eq(recurringTaskConfigs.tenantId, tenantId),
+        eq(recurringTaskConfigs.enabled, true),
+        lte(recurringTaskConfigs.nextRunAt, now),
+      ));
+
+    const createdTasks: Array<{ id: string; title: string }> = [];
+
+    for (const config of dueConfigs) {
+      // Create a task from the recurring config template
+      const [task] = await db.insert(tasks).values({
+        tenantId,
+        projectId: config.projectId,
+        title: config.title,
+        description: config.description,
+        priority: config.priority,
+        status: "created",
+      }).returning();
+
+      createdTasks.push({ id: task!.id, title: task!.title });
+
+      // Compute next run based on schedule
+      const nextRunAt = computeNextRunFromSchedule(config.schedule);
+
+      // Update the config with last/next run times
+      await db.update(recurringTaskConfigs)
+        .set({
+          lastRunAt: now,
+          nextRunAt,
+          updatedAt: now,
+        })
+        .where(eq(recurringTaskConfigs.id, config.id));
+    }
+
+    reply.send({
+      data: {
+        processedConfigs: dueConfigs.length,
+        createdTasks: createdTasks.length,
+        tasks: createdTasks,
+      },
+    });
+  });
+
+  // POST /process-reminders — process due task reminders
+  // Finds all taskReminders where remindAt <= now and sentAt IS NULL,
+  // creates a notification for each, marks sentAt
+  app.post("/process-reminders", {
+    preHandler: [requirePermission("ai:execute")],
+  }, async (request, reply) => {
+    const { tenantId } = request.jwtPayload;
+    const now = new Date();
+
+    // Find due, unsent reminders for this tenant
+    const dueReminders = await db.select({
+      id: taskReminders.id,
+      taskId: taskReminders.taskId,
+      userId: taskReminders.userId,
+      channel: taskReminders.channel,
+      taskTitle: tasks.title,
+    })
+      .from(taskReminders)
+      .innerJoin(tasks, eq(taskReminders.taskId, tasks.id))
+      .where(and(
+        eq(taskReminders.tenantId, tenantId),
+        lte(taskReminders.remindAt, now),
+        isNull(taskReminders.sentAt),
+      ));
+
+    let processed = 0;
+    for (const reminder of dueReminders) {
+      // Create in-app notification
+      await db.insert(notifications).values({
+        tenantId,
+        userId: reminder.userId,
+        type: "reminder",
+        title: `Reminder: ${reminder.taskTitle}`,
+        body: `You have a reminder for task "${reminder.taskTitle}" (channel: ${reminder.channel})`,
+        data: { taskId: reminder.taskId, channel: reminder.channel },
+      });
+
+      // Mark reminder as sent
+      await db.update(taskReminders)
+        .set({ sentAt: now })
+        .where(eq(taskReminders.id, reminder.id));
+
+      processed++;
+    }
+
+    reply.send({
+      data: {
+        processedReminders: processed,
+        totalDue: dueReminders.length,
+      },
+    });
+  });
+}
+
+/** Compute the next run date from a schedule string */
+function computeNextRunFromSchedule(schedule: string): Date {
+  const now = new Date();
+  switch (schedule) {
+    case "daily":
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    case "weekly":
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    case "monthly":
+      return new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    default:
+      // Default to daily for custom/unknown schedules
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  }
 }

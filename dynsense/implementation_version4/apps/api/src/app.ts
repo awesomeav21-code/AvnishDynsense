@@ -32,6 +32,7 @@ import { githubRoutes } from "./routes/github.js";
 import { customFieldRoutes } from "./routes/custom-fields.js";
 import { templateRoutes } from "./routes/templates.js";
 import { customToolRoutes } from "./routes/custom-tools.js";
+import { sseRoutes } from "./routes/sse.js";
 import type { Env } from "./config/env.js";
 
 declare module "fastify" {
@@ -101,6 +102,7 @@ export async function buildApp(env: Env) {
     api.register(customFieldRoutes, { prefix: "/custom-fields" });
     api.register(templateRoutes, { prefix: "/templates" });
     api.register(customToolRoutes, { prefix: "/custom-tools" });
+    api.register(sseRoutes, { prefix: "/sse" });
   }, { prefix: "/api/v1" });
 
   return app;

@@ -9,6 +9,7 @@ import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
 import { writeAuditLog, computeDiff } from "./audit.js";
+import { broadcastToTenant } from "./sse.js";
 import type { Env } from "../config/env.js";
 import { z } from "zod";
 
@@ -268,6 +269,14 @@ export async function taskRoutes(app: FastifyInstance) {
       action: "status_changed",
       actorId: sub,
       diff: { status: { old: existing.status, new: status } },
+    });
+
+    // Broadcast real-time task status change to all connected clients in the tenant
+    broadcastToTenant(tenantId, "task_status_changed", {
+      taskId: id,
+      oldStatus: existing.status,
+      newStatus: status,
+      updatedBy: sub,
     });
 
     // Auto-unblock dependents on task completion (FR-125)

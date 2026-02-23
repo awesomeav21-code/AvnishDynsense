@@ -57,6 +57,8 @@ export default function TableViewPage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -121,6 +123,67 @@ export default function TableViewPage() {
     }
   }, [tasks]);
 
+  function handleExportCsv() {
+    const rows = sorted.map((t) => [
+      t.title,
+      t.status,
+      t.priority,
+      t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "",
+      t.assigneeId ? (userMap[t.assigneeId] ?? "Unknown") : "Unassigned",
+    ]);
+    const csv = [
+      "Title,Status,Priority,Due Date,Assignee",
+      ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tasks-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function toggleSelect(taskId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === sorted.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sorted.map((t) => t.id)));
+    }
+  }
+
+  async function handleBulkAction() {
+    if (!bulkAction || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    setSavingIds(new Set(ids));
+    try {
+      if (STATUSES.includes(bulkAction)) {
+        // Bulk status change
+        setTasks((prev) => prev.map((t) => ids.includes(t.id) ? { ...t, status: bulkAction } : t));
+        await Promise.all(ids.map((id) => api.updateTaskStatus(id, bulkAction)));
+      } else if (PRIORITIES.includes(bulkAction)) {
+        // Bulk priority change
+        setTasks((prev) => prev.map((t) => ids.includes(t.id) ? { ...t, priority: bulkAction } : t));
+        await Promise.all(ids.map((id) => api.updateTask(id, { priority: bulkAction })));
+      }
+      setSelectedIds(new Set());
+      setBulkAction("");
+    } catch {
+      setError("Some bulk updates failed");
+    } finally {
+      setSavingIds(new Set());
+    }
+  }
+
   const sorted = useMemo(() => {
     const arr = [...tasks];
     const dir = sortDir === "asc" ? 1 : -1;
@@ -174,8 +237,54 @@ export default function TableViewPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Table View</h1>
-        <span className="text-xs text-gray-400">{tasks.length} tasks &middot; Click cells to edit</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">{tasks.length} tasks &middot; Click cells to edit</span>
+          <button
+            onClick={handleExportCsv}
+            disabled={tasks.length === 0}
+            className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50 disabled:opacity-50"
+          >
+            Export CSV
+          </button>
+        </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 bg-ai/5 border border-ai/20 rounded-lg px-4 py-2">
+          <span className="text-xs font-medium text-ai">{selectedIds.size} selected</span>
+          <select
+            value={bulkAction}
+            onChange={(e) => setBulkAction(e.target.value)}
+            className="text-xs border rounded px-2 py-1"
+          >
+            <option value="">Choose action...</option>
+            <optgroup label="Set Status">
+              {STATUSES.map((s) => (
+                <option key={`s-${s}`} value={s}>{s.replace("_", " ")}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Set Priority">
+              {PRIORITIES.map((p) => (
+                <option key={`p-${p}`} value={p}>{p}</option>
+              ))}
+            </optgroup>
+          </select>
+          <button
+            onClick={handleBulkAction}
+            disabled={!bulkAction}
+            className="px-3 py-1 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+          >
+            Apply
+          </button>
+          <button
+            onClick={() => { setSelectedIds(new Set()); setBulkAction(""); }}
+            className="text-xs text-gray-500 hover:text-gray-700 ml-auto"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
@@ -193,6 +302,14 @@ export default function TableViewPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-gray-50 border-b">
+                <th className="px-3 py-2.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === sorted.length && sorted.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="text-left px-4 py-2.5 font-semibold text-gray-600 cursor-pointer hover:text-gray-900 select-none" onClick={() => handleSort("title")}>
                   Title <SortIcon field="title" />
                 </th>
@@ -214,7 +331,15 @@ export default function TableViewPage() {
               {sorted.map((task) => {
                 const isSaving = savingIds.has(task.id);
                 return (
-                  <tr key={task.id} className={`transition-colors ${isSaving ? "opacity-60" : "hover:bg-gray-50"}`}>
+                  <tr key={task.id} className={`transition-colors ${isSaving ? "opacity-60" : "hover:bg-gray-50"} ${selectedIds.has(task.id) ? "bg-ai/5" : ""}`}>
+                    <td className="px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(task.id)}
+                        onChange={() => toggleSelect(task.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     {/* Title — link to detail */}
                     <td className="px-4 py-2.5">
                       <Link href={`/tasks/${task.id}`} className="text-gray-900 font-medium hover:text-ai transition-colors">

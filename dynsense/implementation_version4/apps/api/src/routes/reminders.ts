@@ -35,6 +35,27 @@ export async function reminderRoutes(app: FastifyInstance) {
     return { data: rows };
   });
 
+  // GET /task/:taskId — list reminders for a specific task
+  app.get("/task/:taskId", async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const { taskId } = request.params as { taskId: string };
+
+    // Verify task exists and belongs to tenant
+    const task = await db.query.tasks.findFirst({
+      where: and(eq(tasks.id, taskId), eq(tasks.tenantId, tenantId)),
+    });
+    if (!task) throw AppError.notFound("Task not found");
+
+    const rows = await db.select().from(taskReminders)
+      .where(and(
+        eq(taskReminders.tenantId, tenantId),
+        eq(taskReminders.taskId, taskId),
+      ))
+      .orderBy(desc(taskReminders.remindAt));
+
+    return { data: rows };
+  });
+
   // POST / — create a reminder
   app.post("/", async (request, reply) => {
     const { tenantId, sub: userId } = request.jwtPayload;

@@ -233,15 +233,36 @@ class ApiClient {
     return this.request<{ data: Array<{ id: string; name: string; email: string; role: string; status: string }> }>("/users");
   }
 
+  inviteUser(data: { email: string; name: string; role?: string }) {
+    return this.request<{ data: { id: string; email: string; name: string; role: string; status: string } }>("/users/invite", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateUserRole(id: string, role: string) {
+    return this.request<{ data: { id: string; role: string } }>(`/users/${id}/role`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  removeUser(id: string) {
+    return this.request<{ data: { id: string; status: string } }>(`/users/${id}`, { method: "DELETE" });
+  }
+
   // Audit
-  getAuditLog(params?: { entityType?: string; entityId?: string; limit?: number; offset?: number }) {
+  getAuditLog(params?: { entityType?: string; entityId?: string; limit?: number; offset?: number; search?: string; startDate?: string; endDate?: string }) {
     const query = new URLSearchParams();
     if (params?.entityType) query.set("entityType", params.entityType);
     if (params?.entityId) query.set("entityId", params.entityId);
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.offset) query.set("offset", String(params.offset));
+    if (params?.search) query.set("search", params.search);
+    if (params?.startDate) query.set("startDate", params.startDate);
+    if (params?.endDate) query.set("endDate", params.endDate);
     const qs = query.toString();
-    return this.request<{ data: Array<{ id: string; action: string; entityType: string; entityId: string; userId: string; createdAt: string }> }>(`/audit${qs ? `?${qs}` : ""}`);
+    return this.request<{ data: Array<{ id: string; action: string; entityType: string; entityId: string; userId: string; createdAt: string }>; total?: number }>(`/audit${qs ? `?${qs}` : ""}`);
   }
 
   // AI
@@ -326,7 +347,7 @@ class ApiClient {
 
   // Integrations (R1-2)
   getIntegrations() {
-    return this.request<{ data: Array<{ id: string; provider: string; enabled: boolean; config: unknown; channelMapping: unknown; createdAt: string }> }>("/integrations");
+    return this.request<{ data: Array<{ id: string; provider: string; enabled: boolean; config: Record<string, unknown> | null; channelMapping: Record<string, string> | null; createdAt: string }> }>("/integrations");
   }
 
   upsertIntegration(data: { provider: string; enabled?: boolean; config?: Record<string, unknown>; channelMapping?: Record<string, string> }) {
@@ -401,12 +422,19 @@ class ApiClient {
   // Recurring Tasks (R1-6)
   getRecurringTasks(projectId?: string) {
     const qs = projectId ? `?projectId=${projectId}` : "";
-    return this.request<{ data: Array<{ id: string; title: string; schedule: string; enabled: boolean; nextRunAt: string | null; lastRunAt: string | null }> }>(`/recurring-tasks${qs}`);
+    return this.request<{ data: Array<{ id: string; title: string; projectId: string; schedule: string; priority: string; enabled: boolean; nextRunAt: string | null; lastRunAt: string | null }> }>(`/recurring-tasks${qs}`);
   }
 
   createRecurringTask(data: { projectId: string; title: string; description?: string; priority?: string; schedule: string; cronExpression?: string }) {
     return this.request<{ data: { id: string; title: string; schedule: string } }>("/recurring-tasks", {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateRecurringTask(id: string, data: { title?: string; description?: string; priority?: string; schedule?: string; cronExpression?: string; enabled?: boolean }) {
+    return this.request<{ data: { id: string; title: string; schedule: string; enabled: boolean } }>(`/recurring-tasks/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }
@@ -424,6 +452,10 @@ class ApiClient {
   // Reminders (R1-6)
   getReminders() {
     return this.request<{ data: Array<{ id: string; taskId: string; remindAt: string; channel: string; sentAt: string | null }> }>("/reminders");
+  }
+
+  getTaskReminders(taskId: string) {
+    return this.request<{ data: Array<{ id: string; taskId: string; userId: string; remindAt: string; channel: string; sentAt: string | null }> }>(`/reminders/task/${taskId}`);
   }
 
   createReminder(data: { taskId: string; remindAt: string; channel?: string }) {

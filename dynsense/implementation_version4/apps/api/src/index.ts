@@ -1,6 +1,8 @@
 // Ref: design-doc §3.2 — Fastify API server entry point with health check
-import { config } from "dotenv";
-config({ path: "../../.env" });
+if (process.env["NODE_ENV"] !== "production") {
+  const { config } = await import("dotenv");
+  config({ path: "../../.env" });
+}
 
 import { loadEnv } from "./config/env.js";
 import { buildApp } from "./app.js";

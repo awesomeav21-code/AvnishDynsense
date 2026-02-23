@@ -5,6 +5,7 @@ import { eq, and, desc, lte } from "drizzle-orm";
 import { recurringTaskConfigs, tasks } from "@dynsense/db";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 import { getDb } from "../db.js";
 import type { Env } from "../config/env.js";
 import { z } from "zod";
@@ -65,7 +66,9 @@ export async function recurringTaskRoutes(app: FastifyInstance) {
   });
 
   // POST / — create a recurring task config
-  app.post("/", async (request, reply) => {
+  app.post("/", {
+    preHandler: [requirePermission("task:create")],
+  }, async (request, reply) => {
     const { tenantId, sub: userId } = request.jwtPayload;
     const body = createRecurringSchema.parse(request.body);
 

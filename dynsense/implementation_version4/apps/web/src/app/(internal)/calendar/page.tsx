@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -80,6 +80,10 @@ export default function CalendarPage() {
   const [quickTitle, setQuickTitle] = useState("");
   const [quickProjectId, setQuickProjectId] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Drag-to-reschedule state
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+  const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -173,6 +177,28 @@ export default function CalendarPage() {
       setCreating(false);
     }
   }
+
+  const handleDrop = useCallback(async (targetDateKey: string) => {
+    if (!dragTaskId) return;
+    setDropTargetKey(null);
+    const task = tasks.find((t) => t.id === dragTaskId);
+    if (!task) return;
+    const oldDate = task.dueDate;
+    if (oldDate?.slice(0, 10) === targetDateKey) {
+      setDragTaskId(null);
+      return;
+    }
+    // Optimistic update
+    setTasks((prev) => prev.map((t) => t.id === dragTaskId ? { ...t, dueDate: targetDateKey } : t));
+    setDragTaskId(null);
+    try {
+      await api.updateTask(dragTaskId, { dueDate: targetDateKey });
+    } catch {
+      // Rollback
+      setTasks((prev) => prev.map((t) => t.id === dragTaskId ? { ...t, dueDate: oldDate } : t));
+      setError("Failed to reschedule task");
+    }
+  }, [dragTaskId, tasks]);
 
   // Month view cells
   const daysInMonth = getDaysInMonth(year, month);
@@ -268,9 +294,12 @@ export default function CalendarPage() {
                 <div
                   key={cell.key}
                   onClick={() => cell.day !== null && handleCellClick(cell.key)}
+                  onDragOver={(e) => { if (cell.day !== null) { e.preventDefault(); setDropTargetKey(cell.key); } }}
+                  onDragLeave={() => setDropTargetKey(null)}
+                  onDrop={(e) => { e.preventDefault(); if (cell.day !== null) handleDrop(cell.key); }}
                   className={`min-h-[100px] border-b border-r p-1.5 cursor-pointer transition-colors ${
                     cell.day === null ? "bg-gray-50 cursor-default" : "bg-white hover:bg-blue-50/30"
-                  } ${isToday ? "ring-2 ring-inset ring-ai/30" : ""} ${isQuickCreate ? "bg-blue-50" : ""}`}
+                  } ${isToday ? "ring-2 ring-inset ring-ai/30" : ""} ${isQuickCreate ? "bg-blue-50" : ""} ${dropTargetKey === cell.key ? "bg-ai/10 ring-2 ring-inset ring-ai/40" : ""}`}
                 >
                   {cell.day !== null && (
                     <>
@@ -316,7 +345,15 @@ export default function CalendarPage() {
 
                       <div className="space-y-0.5">
                         {dayTasks.slice(0, 3).map((task) => (
-                          <Link key={task.id} href={`/tasks/${task.id}`} className="flex items-center gap-1 group" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            key={task.id}
+                            href={`/tasks/${task.id}`}
+                            draggable
+                            onDragStart={(e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; }}
+                            onDragEnd={() => { setDragTaskId(null); setDropTargetKey(null); }}
+                            className={`flex items-center gap-1 group ${dragTaskId === task.id ? "opacity-40" : ""}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${priorityDotColors[task.priority] ?? "bg-gray-400"}`} />
                             <span className="text-[10px] text-gray-700 truncate group-hover:text-ai transition-colors">
                               {task.title}
@@ -348,9 +385,12 @@ export default function CalendarPage() {
                 <div
                   key={key}
                   onClick={() => handleCellClick(key)}
+                  onDragOver={(e) => { e.preventDefault(); setDropTargetKey(key); }}
+                  onDragLeave={() => setDropTargetKey(null)}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(key); }}
                   className={`min-h-[300px] border-r p-2 cursor-pointer transition-colors ${
                     isToday ? "ring-2 ring-inset ring-ai/30 bg-ai/5" : "bg-white hover:bg-blue-50/30"
-                  } ${isQuickCreate ? "bg-blue-50" : ""}`}
+                  } ${isQuickCreate ? "bg-blue-50" : ""} ${dropTargetKey === key ? "bg-ai/10 ring-2 ring-inset ring-ai/40" : ""}`}
                 >
                   <div className={`text-xs font-medium mb-2 ${isToday ? "text-ai font-bold" : "text-gray-500"}`}>
                     {date.toLocaleDateString("en-US", { weekday: "short", day: "numeric" })}
@@ -397,12 +437,15 @@ export default function CalendarPage() {
                       <Link
                         key={task.id}
                         href={`/tasks/${task.id}`}
+                        draggable
+                        onDragStart={(e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { setDragTaskId(null); setDropTargetKey(null); }}
                         onClick={(e) => e.stopPropagation()}
                         className={`block px-1.5 py-1 rounded text-[10px] border transition-colors hover:border-ai/50 ${
                           task.status === "completed"
                             ? "bg-green-50 border-green-200 text-green-700 line-through"
                             : "bg-white border-gray-200 text-gray-700"
-                        }`}
+                        } ${dragTaskId === task.id ? "opacity-40" : ""}`}
                       >
                         <div className="flex items-center gap-1">
                           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${priorityDotColors[task.priority] ?? "bg-gray-400"}`} />
@@ -429,7 +472,7 @@ export default function CalendarPage() {
             </span>
           ))}
         </div>
-        <span className="text-xs text-gray-400">Click a day to quick-create a task</span>
+        <span className="text-xs text-gray-400">Click a day to quick-create &middot; Drag tasks to reschedule</span>
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ const navItems = [
   { label: "Integrations", href: "/integrations", icon: "plug" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Custom Fields", href: "/settings/custom-fields", icon: "settings" },
+  { label: "Recurring Tasks", href: "/settings/recurring-tasks", icon: "calendar" },
   { label: "Audit Log", href: "/audit", icon: "scroll" },
 ];
 

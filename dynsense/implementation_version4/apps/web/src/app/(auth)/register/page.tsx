@@ -19,9 +19,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await api.register({ email, password, name, tenantId: tenantId || undefined });
-      api.setTokens(res.accessToken, res.refreshToken);
-      router.push("/dashboard");
+      await api.register({ email, password, name, tenantId: tenantId || undefined });
+      router.push("/login?registered=true");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

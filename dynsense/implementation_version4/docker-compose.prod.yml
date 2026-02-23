@@ -1,0 +1,103 @@
+# ============================================
+# Dynsense — Local Docker Deployment
+# Usage:
+#   cp .env.production.example .env.production  # fill in values
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+# ============================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: dynsense-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dynsense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dynsense_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-dynsense}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db-init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dynsense}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: dynsense-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-dynsense_redis} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dynsense_redis}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: dynsense-nats
+    restart: unless-stopped
+    command: --jetstream --store_dir /data --http_port 8222
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "4222:4222"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: dynsense-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dynsense}:${POSTGRES_PASSWORD:-dynsense_prod}@postgres:5432/${POSTGRES_DB:-dynsense}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dynsense_redis}@redis:6379
+      NATS_URL: nats://nats:4222
+      API_PORT: 3001
+      API_HOST: 0.0.0.0
+      JWT_SECRET: ${JWT_SECRET:-dynsense-local-dev-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+    container_name: dynsense-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:

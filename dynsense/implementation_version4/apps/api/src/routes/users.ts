@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import crypto from "node:crypto";
 import { eq, and } from "drizzle-orm";
 import { users } from "@dynsense/db";
 import { AppError } from "../utils/errors.js";
@@ -56,5 +57,59 @@ export async function userRoutes(app: FastifyInstance) {
       .returning({ id: users.id, email: users.email, name: users.name, role: users.role });
 
     return { data: updated };
+  });
+
+  // POST /invite — invite a new user to the tenant
+  app.post("/invite", {
+    preHandler: [requirePermission("user:manage")],
+  }, async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const body = z.object({
+      email: z.string().email(),
+      name: z.string().min(1),
+      role: z.enum(["site_admin", "pm", "developer", "client"]).default("developer"),
+    }).parse(request.body);
+
+    // Check for existing user with same email in this tenant
+    const existing = await db.query.users.findFirst({
+      where: and(eq(users.email, body.email), eq(users.tenantId, tenantId)),
+    });
+    if (existing) throw AppError.conflict("A user with this email already exists in the tenant");
+
+    // Create the user with a random temporary password hash
+    const tempHash = crypto.randomBytes(32).toString("hex");
+    const [created] = await db.insert(users).values({
+      tenantId,
+      email: body.email,
+      name: body.name,
+      role: body.role,
+      status: "invited",
+      passwordHash: tempHash,
+    }).returning({ id: users.id, email: users.email, name: users.name, role: users.role, status: users.status });
+
+    return { data: created };
+  });
+
+  // DELETE /:id — remove a user from the tenant
+  app.delete("/:id", {
+    preHandler: [requirePermission("user:manage")],
+  }, async (request) => {
+    const { tenantId, sub: currentUserId } = request.jwtPayload;
+    const { id } = request.params as { id: string };
+
+    if (id === currentUserId) {
+      throw AppError.badRequest("Cannot remove yourself");
+    }
+
+    const existing = await db.query.users.findFirst({
+      where: and(eq(users.id, id), eq(users.tenantId, tenantId)),
+    });
+    if (!existing) throw AppError.notFound("User not found");
+
+    await db.update(users)
+      .set({ status: "deactivated", updatedAt: new Date() })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantId)));
+
+    return { data: { id, status: "deactivated" } };
   });
 }
