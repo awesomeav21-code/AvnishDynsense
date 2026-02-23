@@ -145,10 +145,10 @@ class ApiClient {
   }
 
   getTask(id: string) {
-    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
+    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; reportedBy: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
   }
 
-  createTask(data: { projectId: string; title: string; description?: string; priority?: string; dueDate?: string; estimatedEffort?: number }) {
+  createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string }) {
     return this.request<{ data: { id: string; title: string } }>("/tasks", {
       method: "POST",
       body: JSON.stringify(data),
@@ -378,12 +378,19 @@ class ApiClient {
 
   // Tags (R1-6)
   getTags() {
-    return this.request<{ data: Array<{ id: string; name: string; color: string; createdAt: string }> }>("/tags");
+    return this.request<{ data: Array<{ id: string; name: string; color: string; archived: boolean; isDefault: boolean; taskCount: number; createdAt: string }> }>("/tags");
   }
 
   createTag(data: { name: string; color?: string }) {
-    return this.request<{ data: { id: string; name: string; color: string } }>("/tags", {
+    return this.request<{ data: { id: string; name: string; color: string; archived: boolean; isDefault: boolean } }>("/tags", {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateTag(id: string, data: { name?: string; color?: string; archived?: boolean }) {
+    return this.request<{ data: { id: string; name: string; color: string; archived: boolean; isDefault: boolean } }>(`/tags/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }

@@ -1,0 +1,142 @@
+Feature Code,Feature Name,Sprint/Round,Category,Status,Implementation Files,Commit Date
+FR-100,Email + password registration (bcrypt cost 12+),R0,Auth & Authorization,Implemented,"packages/db/src/schema/users.ts, packages/shared/src/schemas/auth.schemas.ts",2026-02-19
+FR-101,JWT login (access token 1h + refresh token 30d),R0,Auth & Authorization,Implemented,"packages/shared/src/types/auth.ts, packages/shared/src/schemas/auth.schemas.ts",2026-02-19
+FR-104,RBAC with 4 roles (site_admin / pm / developer / client),R0,Auth & Authorization,Implemented,"packages/db/src/schema/users.ts, packages/shared/src/types/auth.ts, packages/shared/src/constants/roles.ts",2026-02-19
+FR-105,Role-based endpoint protection via middleware,R0,Auth & Authorization,Implemented,"packages/shared/src/constants/permissions.ts, apps/api/src/middleware/rbac.ts",2026-02-20
+FR-106,SSO integration (SAML 2.0 / OIDC),R0,Auth & Authorization,Stub,apps/api/src/routes/sso.ts,2026-02-21
+FR-107,MFA TOTP - enrollment / verification / recovery codes,R0,Auth & Authorization,Stub,apps/api/src/routes/sso.ts,2026-02-21
+FR-108,Session hardening (device fingerprint / IP pinning),R0,Auth & Authorization,Stub,apps/api/src/routes/sso.ts,2026-02-21
+FR-109,Admin-configurable values per-tenant key-value config,R0,Auth & Authorization,Implemented,packages/shared/src/schemas/config.schemas.ts,2026-02-20
+FR-110,CRUD projects (name / description / status / dates),R0,Project Management,Implemented,"packages/db/src/schema/projects.ts, packages/shared/src/schemas/project.schemas.ts, apps/api/src/routes/projects.ts",2026-02-19
+FR-111,Project phases (Discovery / Build / Deliver) CRUD,R0,Project Management,Implemented,"apps/api/src/routes/phases.ts, packages/db/src/schema/phases.ts",2026-02-20
+FR-112,WBS baseline storage in projects (JSONB) + persistence,R0,Project Management,Implemented,"packages/db/src/schema/projects.ts, apps/api/src/routes/ai.ts",2026-02-20
+FR-113,Soft delete with recovery window,R0,Project Management,Implemented,"packages/db/src/schema/projects.ts, packages/db/src/schema/tasks.ts",2026-02-20
+FR-114,Project templates - clone from existing project,R0,Project Management,Implemented,apps/api/src/routes/templates.ts,2026-02-21
+FR-120,CRUD tasks with full field set,R0,Tasks,Implemented,"packages/db/src/schema/tasks.ts, packages/shared/src/schemas/task.schemas.ts, apps/api/src/routes/tasks.ts",2026-02-19
+FR-121,Task status transitions (created → ready → in_progress → review → completed/blocked/cancelled),R0,Tasks,Implemented,"packages/db/src/schema/tasks.ts, packages/shared/src/types/task.ts",2026-02-19
+FR-122,Task assignment to one or more users,R0,Tasks,Implemented,"packages/db/src/schema/task-assignments.ts, apps/api/src/routes/assignments.ts",2026-02-20
+FR-123,Sub-tasks (single-level nesting via parent_task_id),R0,Tasks,Implemented,packages/db/src/schema/tasks.ts,2026-02-20
+FR-124,Task dependencies (DAG model with circular detection),R0,Tasks,Implemented,"packages/db/src/schema/task-dependencies.ts, packages/shared/src/types/task.ts, apps/api/src/routes/dependencies.ts",2026-02-20
+FR-125,Auto-unblock dependents on task completion,R0,Tasks,Implemented,apps/api/src/routes/tasks.ts,2026-02-20
+FR-126,Task filtering (by project / phase / status / priority / assignee),R0,Tasks,Implemented,"packages/shared/src/schemas/task.schemas.ts, apps/api/src/routes/tasks.ts",2026-02-20
+FR-127,Task checklists with groups / items / completion percentage,R0,Tasks,Implemented,"packages/db/src/schema/task-checklists.ts, packages/shared/src/schemas/checklist.schemas.ts, apps/api/src/routes/checklists.ts",2026-02-20
+FR-128,Comments with @mention parsing (UUID extraction),R0,Tasks,Implemented,"packages/db/src/schema/comments.ts, packages/shared/src/schemas/comment.schemas.ts, apps/api/src/routes/comments.ts",2026-02-20
+FR-129,Client-visible comment filtering,R2,Tasks,Planned,packages/db/src/schema/comments.ts,—
+FR-130,Custom fields CRUD (definitions + values per task),R0,Tasks,Implemented,"apps/api/src/routes/custom-fields.ts, packages/db/src/schema/custom-field-definitions.ts, packages/db/src/schema/custom-field-values.ts",2026-02-21
+FR-131,Tags and labels with color coding,R0,Tasks,Implemented,"apps/api/src/routes/tags.ts, packages/db/src/schema/tags.ts, packages/db/src/schema/task-tags.ts",2026-02-21
+FR-132,Recurring tasks (daily / weekly / sprint-aligned),R0,Tasks,Implemented,"apps/api/src/routes/recurring-tasks.ts, packages/db/src/schema/recurring-task-configs.ts",2026-02-21
+FR-134,Full-text search (across tasks / projects / comments),R0,Tasks,Implemented,apps/api/src/routes/search.ts,2026-02-21
+FR-136,Assigned Comments / Action Items,R0,Tasks,Implemented,apps/api/src/routes/comments.ts,2026-02-20
+FR-137,Task reminders - configurable per-task notifications,R0,Tasks,Implemented,"apps/api/src/routes/reminders.ts, packages/db/src/schema/task-reminders.ts",2026-02-21
+FR-140,Field-level audit trail on all mutations,R0,Tasks,Implemented,"packages/db/src/schema/audit-log.ts, apps/api/src/routes/audit.ts",2026-02-20
+FR-141,Actor type tracking (human vs AI) in audit logs,R0,Tasks,Implemented,"packages/db/src/schema/audit-log.ts, packages/shared/src/types/events.ts",2026-02-20
+FR-142,Immutable audit_log (UPDATE/DELETE blocked at DB level),R0,Tasks,Implemented,"packages/db/src/schema/audit-log.ts, scripts/db-init.sql",2026-02-20
+FR-143,AI action traceability via ai_action_id in audit logs,R0,Tasks,Implemented,packages/db/src/schema/audit-log.ts,2026-02-20
+FR-153,Kanban board (drag-drop task status management),R0,UI Pages,Implemented,apps/web/src/app/(internal)/kanban/page.tsx,2026-02-22
+FR-159,SVG DAG dependency graph (Kahn's topological sort),R0,UI Pages,Implemented,apps/web/src/app/(internal)/dependencies/page.tsx,2026-02-22
+FR-160,SVG Gantt timeline (date axis / phase grouping / today line),R0,UI Pages,Implemented,apps/web/src/app/(internal)/timeline/page.tsx,2026-02-22
+FR-161,Portfolio dashboard - cross-project overview,R0,UI Pages,Implemented,apps/web/src/app/(internal)/portfolio/page.tsx,2026-02-22
+FR-200,7-stage orchestration pipeline result storage,R0,AI Pipeline & Orchestration,Implemented,"packages/db/src/schema/ai-actions.ts, packages/agents/src/orchestrator.ts",2026-02-20
+FR-201,NL-to-WBS generator subagent,R0,AI Agents,Implemented,packages/agents/src/agents/wbs-generator.ts,2026-02-21
+FR-202,What's Next engine (dependency → due date → priority),R0,AI Agents,Implemented,packages/agents/src/agents/whats-next.ts,2026-02-21
+FR-203,NL Query engine - answer natural language questions,R0,AI Agents,Implemented,packages/agents/src/agents/nl-query.ts,2026-02-21
+FR-204,Summary Writer - auto-generate daily/weekly reports,R0,AI Agents,Implemented,packages/agents/src/agents/summary-writer.ts,2026-02-21
+FR-206,AI PM Agent - 15-minute autonomous loops,R0,AI Agents,Implemented,"apps/api/src/routes/cron.ts, packages/agents/src/agents/ai-pm-agent.ts",2026-02-21
+FR-211,AI Evaluation Harness - golden test fixtures,R0,AI Pipeline & Orchestration,Implemented,"apps/api/src/routes/ai-eval.ts, packages/agents/src/fixtures/golden-tests.ts",2026-02-22
+FR-212,AI Monitoring Dashboard - token usage / cost / confidence,R0,AI Pipeline & Orchestration,Implemented,apps/api/src/routes/ai-eval.ts,2026-02-21
+FR-300,Three autonomy modes (shadow / propose / execute),R0,AI Autonomy & Control,Implemented,"packages/agents/src/hooks/autonomy-enforcer.ts, packages/shared/src/types/ai.ts",2026-02-21
+FR-301,AI Review page (approve / reject / edit),R0,AI Autonomy & Control,Implemented,"packages/shared/src/schemas/ai.schemas.ts, apps/api/src/routes/ai.ts",2026-02-20
+FR-302,Shadow-mode AI actions list (admin/pm only),R0,AI Autonomy & Control,Implemented,apps/api/src/routes/ai.ts,2026-02-21
+FR-303,Confidence threshold default 0.6,R0,AI Autonomy & Control,Implemented,packages/shared/src/constants/ai-capabilities.ts,2026-02-21
+FR-304,Rollback data stored as pre-action snapshot,R0,AI Autonomy & Control,Implemented,"packages/db/src/schema/ai-actions.ts, apps/api/src/routes/ai.ts",2026-02-21
+FR-305,Quiet hours check (respect user preferences),R0,AI Autonomy & Control,Implemented,apps/api/src/routes/cron.ts,2026-02-21
+FR-306,Nudge limits - max 2 per task per day,R0,AI Autonomy & Control,Implemented,"packages/shared/src/constants/ai-capabilities.ts, packages/agents/src/hooks/notification-hook.ts",2026-02-22
+FR-307,Daily AI cost cap per tenant ($50 default),R0,AI Autonomy & Control,Implemented,packages/agents/src/hooks/rate-limiter.ts,2026-02-22
+FR-308,Rollback an AI action endpoint,R0,AI Autonomy & Control,Implemented,apps/api/src/routes/ai.ts,2026-02-21
+FR-320,pm-db MCP server (query / mutate / get_by_id tools),R0,MCP & Tools,Implemented,packages/mcp/src/servers/pm-db.ts,2026-02-21
+FR-321,pgvector MCP server (cosine similarity / metadata search),R0,MCP & Tools,Implemented,packages/mcp/src/servers/pgvector.ts,2026-02-21
+FR-322,pm-nats MCP server (JetStream publish / request-reply),R0,MCP & Tools,Implemented,packages/mcp/src/servers/pm-nats.ts,2026-02-21
+FR-323,Tool allowlist enforcement,R0,MCP & Tools,Implemented,packages/mcp/src/registry.ts,2026-02-21
+FR-324,MCP registry (tool dispatch / server lifecycle),R0,MCP & Tools,Implemented,"packages/mcp/src/registry.ts, packages/db/src/schema/ai-mcp-servers.ts",2026-02-21
+FR-341,Tenant-isolator hook (block cross-tenant access),R0,AI Hooks,Implemented,packages/agents/src/hooks/tenant-isolator.ts,2026-02-21
+FR-342,Autonomy-enforcer hook (shadow / propose / execute),R0,AI Hooks,Implemented,packages/agents/src/hooks/autonomy-enforcer.ts,2026-02-21
+FR-343,Rate-limiter hook (in-memory sliding window),R0,AI Hooks,Implemented,packages/agents/src/hooks/rate-limiter.ts,2026-02-21
+FR-345,Cost-tracker hook (token/cost accounting to DB),R0,AI Hooks,Implemented,packages/agents/src/hooks/cost-tracker.ts,2026-02-21
+FR-346,Audit-writer hook (log all hook decisions),R0,AI Hooks,Implemented,packages/agents/src/hooks/audit-writer.ts,2026-02-21
+FR-347,Traceability hook (link mutations to ai_action records),R0,AI Hooks,Implemented,packages/agents/src/hooks/traceability.ts,2026-02-21
+FR-348,Notification-hook (notify users on AI mutations),R0,AI Hooks,Implemented,packages/agents/src/hooks/notification-hook.ts,2026-02-21
+FR-349,Session-manager hook (persist session state / turn count),R0,AI Hooks,Implemented,packages/agents/src/hooks/session-manager.ts,2026-02-21
+FR-350,pgvector cosine similarity + pg_trgm text search,R0,MCP & Tools,Implemented,packages/mcp/src/servers/pgvector.ts,2026-02-22
+FR-351,In-memory event bus with pub/sub and wildcard matching,R0,MCP & Tools,Implemented,packages/mcp/src/servers/pm-nats.ts,2026-02-22
+FR-361,Retry configuration with exponential backoff,R0,AI Pipeline & Orchestration,Implemented,packages/agents/src/orchestrator.ts,2026-02-22
+FR-362,Token budget per model (context window limits),R0,AI Pipeline & Orchestration,Implemented,packages/agents/src/orchestrator.ts,2026-02-22
+FR-363,Per-tenant cost tracking (daily/monthly rollups),R0,AI Pipeline & Orchestration,Implemented,"packages/db/src/schema/ai-cost-log.ts, packages/agents/src/hooks/cost-tracker.ts",2026-02-21
+FR-400,Slack OAuth 2.0 installation flow,R0,Slack Integration,Implemented,apps/api/src/routes/slack.ts,2026-02-22
+FR-401,AI nudge delivery via Slack DM,R0,Slack Integration,Implemented,apps/api/src/routes/slack.ts,2026-02-22
+FR-402,Daily summary push to Slack channel,R0,Slack Integration,Implemented,apps/api/src/routes/slack.ts,2026-02-22
+FR-403,/dynsense slash command handler,R0,Slack Integration,Implemented,apps/api/src/routes/slack.ts,2026-02-22
+FR-406,Per-user Slack notification preferences,R0,Slack Integration,Implemented,apps/api/src/routes/slack.ts,2026-02-22
+FR-420,GitHub App installation OAuth flow,R0,GitHub Integration,Implemented,apps/api/src/routes/github.ts,2026-02-22
+FR-422,Webhook - commit-to-task linking / PR lifecycle events,R0,GitHub Integration,Implemented,"apps/api/src/routes/github.ts, apps/api/src/routes/integrations.ts",2026-02-22
+FR-423,Auto-transition task on PR merge,R0,GitHub Integration,Implemented,apps/api/src/routes/integrations.ts,2026-02-22
+FR-424,Branch name suggestion from task title,R0,GitHub Integration,Implemented,apps/api/src/routes/github.ts,2026-02-22
+FR-425,Pipeline/CI status display on task detail,R0,GitHub Integration,Implemented,apps/api/src/routes/github.ts,2026-02-22
+FR-500,Database initialization script,R0,Infrastructure & Config,Implemented,scripts/db-init.sql,2026-02-21
+FR-504,Typed env config with Zod validation + .env.example,R0,Infrastructure & Config,Implemented,"apps/api/src/config/env.ts, .env.example",2026-02-19
+FR-560,12 JetStream streams covering all domain events,R0,Infrastructure & Config,Implemented,packages/shared/src/constants/nats-streams.ts,2026-02-21
+FR-600,tenants table (root / not tenant-scoped),R0,DB Schema,Implemented,packages/db/src/schema/tenants.ts,2026-02-19
+FR-601,users table (tenant-scoped),R0,DB Schema,Implemented,packages/db/src/schema/users.ts,2026-02-19
+FR-602,projects table (tenant-scoped),R0,DB Schema,Implemented,packages/db/src/schema/projects.ts,2026-02-19
+FR-603,tasks table (tenant-scoped),R0,DB Schema,Implemented,packages/db/src/schema/tasks.ts,2026-02-19
+FR-604,task_assignments table,R0,DB Schema,Implemented,packages/db/src/schema/task-assignments.ts,2026-02-20
+FR-605,task_dependencies table,R0,DB Schema,Implemented,packages/db/src/schema/task-dependencies.ts,2026-02-20
+FR-606,comments table,R0,DB Schema,Implemented,packages/db/src/schema/comments.ts,2026-02-20
+FR-607,mentions table,R0,DB Schema,Implemented,packages/db/src/schema/mentions.ts,2026-02-20
+FR-608,task_checklists table,R0,DB Schema,Implemented,packages/db/src/schema/task-checklists.ts,2026-02-20
+FR-609,checklist_items table,R0,DB Schema,Implemented,packages/db/src/schema/checklist-items.ts,2026-02-20
+FR-610,audit_log table (immutable),R0,DB Schema,Implemented,packages/db/src/schema/audit-log.ts,2026-02-20
+FR-611,phases table,R0,DB Schema,Implemented,packages/db/src/schema/phases.ts,2026-02-20
+FR-620,ai_actions table,R0,DB Schema,Implemented,packages/db/src/schema/ai-actions.ts,2026-02-20
+FR-621,ai_cost_log table,R0,DB Schema,Implemented,packages/db/src/schema/ai-cost-log.ts,2026-02-21
+FR-622,ai_agent_configs table,R0,DB Schema,Implemented,packages/db/src/schema/ai-agent-configs.ts,2026-02-21
+FR-623,ai_sessions table,R0,DB Schema,Implemented,packages/db/src/schema/ai-sessions.ts,2026-02-21
+FR-624,ai_hook_log table,R0,DB Schema,Implemented,packages/db/src/schema/ai-hook-log.ts,2026-02-21
+FR-625,ai_mcp_servers table (global registry),R0,DB Schema,Implemented,packages/db/src/schema/ai-mcp-servers.ts,2026-02-21
+FR-641,embeddings table for pgvector RAG context,R0,DB Schema,Implemented,packages/db/src/schema/embeddings.ts,2026-02-21
+FR-700,Slack integration infrastructure,R0,Integrations,Implemented,"apps/api/src/routes/integrations.ts, apps/api/src/routes/slack.ts",2026-02-21
+FR-701,AI nudge delivery infrastructure,R0,Integrations,Implemented,apps/api/src/routes/integrations.ts,2026-02-21
+FR-721,Feature flags - gate capabilities by plan tier,R1,Feature Flags,Implemented,apps/api/src/routes/feature-flags.ts,2026-02-21
+FR-902,Feature flag infrastructure - tenant-level gating,R1,Feature Flags,Implemented,"apps/api/src/routes/feature-flags.ts, apps/api/src/middleware/feature-flags.ts",2026-02-22
+FR-1000,Tags - default + custom per project,R1,R1 Extensions,Implemented,"apps/api/src/routes/tags.ts, packages/db/src/schema/tags.ts",2026-02-21
+FR-1002,Full-text search (GIN index optimization),R1,R1 Extensions,Implemented,apps/api/src/routes/search.ts,2026-02-21
+FR-2001,Recurring tasks - daily/weekly/monthly/cron + auto-clone,R1,R1 Extensions,Implemented,"apps/api/src/routes/recurring-tasks.ts, packages/db/src/schema/recurring-task-configs.ts",2026-02-21
+FR-2014,Task reminders - personal per-user / scheduled delivery,R1,R1 Extensions,Implemented,"apps/api/src/routes/reminders.ts, packages/db/src/schema/task-reminders.ts",2026-02-21
+FR-3000,Multi-Agent Orchestrator (central entry point),R1,R1 Extensions,Implemented,packages/agents/src/orchestrator.ts,2026-02-21
+FR-3001,Subagent definitions with tool restrictions (7 agents),R1,R1 Extensions,Implemented,packages/shared/src/constants/ai-capabilities.ts,2026-02-21
+FR-3002,MCP Integration Layer,R1,R1 Extensions,Implemented,packages/mcp/src/types.ts,2026-02-21
+FR-3003,AI Session Persistence (resumable / forkable / 30-day),R1,R1 Extensions,Implemented,"packages/db/src/schema/ai-sessions.ts, packages/agents/src/sessions/session-service.ts",2026-02-22
+FR-3004,PreToolUse hook (sequential / first-deny-wins),R1,R1 Extensions,Implemented,packages/agents/src/hooks/tenant-isolator.ts,2026-02-21
+FR-3005,Permission Evaluation Chain (4-step),R1,R1 Extensions,Implemented,packages/agents/src/permissions/permission-chain.ts,2026-02-22
+FR-3006,Tool Restrictions per Agent (least privilege),R1,R1 Extensions,Implemented,packages/agents/src/permissions/permission-chain.ts,2026-02-22
+FR-3007,Custom tool extension API (register / list / invoke),R1,R1 Extensions,Implemented,apps/api/src/routes/custom-tools.ts,2026-02-21
+FR-3008,AI Sessions endpoint (list / detail / terminate),R1,R1 Extensions,Implemented,"apps/api/src/routes/ai.ts, apps/web/src/lib/api.ts",2026-02-22
+FR-3009,Execute multiple capabilities in parallel,R1,R1 Extensions,Implemented,packages/agents/src/orchestrator.ts,2026-02-22
+FR-3011,Inject multi-turn session context for continuity,R1,R1 Extensions,Implemented,packages/agents/src/orchestrator.ts,2026-02-22
+NFR-045,Session resume < 100ms,R1,Non-Functional Requirements,Implemented,packages/agents/src/sessions/session-service.ts,2026-02-22
+NFR-046,Session creation < 50ms,R1,Non-Functional Requirements,Implemented,packages/agents/src/sessions/session-service.ts,2026-02-22
+NFR-047,Session fork < 200ms,R1,Non-Functional Requirements,Implemented,packages/agents/src/sessions/session-service.ts,2026-02-22
+—,Docker deployment (API + Web multi-stage builds),R0,Infrastructure & Config,Implemented,"Dockerfile.api, Dockerfile.web, docker-compose.prod.yml",2026-02-22
+—,Programmatic Drizzle migrator for production,R0,Infrastructure & Config,Implemented,packages/db/src/run-migrations.ts,2026-02-22
+—,Comprehensive demo seed data (5 users / 3 projects / 45 tasks),R0,Infrastructure & Config,Implemented,packages/db/src/seed.ts,2026-02-22
+—,PM role team management (user:manage permission),R0,Auth & Authorization,Implemented,"packages/shared/src/constants/permissions.ts, apps/api/src/routes/users.ts",2026-02-23
+—,Audit log actor/entity name resolution,R0,UI Pages,Implemented,"apps/api/src/routes/audit.ts, apps/web/src/app/(internal)/audit/page.tsx",2026-02-23
+—,Project edit/delete buttons on project cards,R0,UI Pages,Implemented,apps/web/src/app/(internal)/projects/page.tsx,2026-02-23
+—,Settings pages (priorities / tags / saved views),R0,UI Pages,Implemented,apps/web/src/app/(internal)/settings/,2026-02-23
+—,Interactive Kanban drag-drop with optimistic updates,R0,UI Pages,Implemented,apps/web/src/app/(internal)/kanban/page.tsx,2026-02-22
+—,Table view with inline editing (status / priority / due date),R0,UI Pages,Implemented,apps/web/src/app/(internal)/table-view/page.tsx,2026-02-22
+—,Calendar week view toggle + click-to-create task,R0,UI Pages,Implemented,apps/web/src/app/(internal)/calendar/page.tsx,2026-02-22
+—,My Tasks quick status change via inline dropdown,R0,UI Pages,Implemented,apps/web/src/app/(internal)/my-tasks/page.tsx,2026-02-22
+—,Notifications inbox with read/unread filter,R0,UI Pages,Implemented,apps/web/src/app/(internal)/notifications/page.tsx,2026-02-22
+—,Custom fields CRUD management page,R0,UI Pages,Implemented,apps/web/src/app/(internal)/settings/custom-fields/page.tsx,2026-02-22
+—,Templates clone-from-template dialog,R0,UI Pages,Implemented,apps/web/src/app/(internal)/projects/page.tsx,2026-02-22
+—,GitHub Actions CI/CD pipeline,R1,Infrastructure & Config,Implemented,.github/workflows/ci.yml,2026-02-21

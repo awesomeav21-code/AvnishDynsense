@@ -182,8 +182,10 @@ export async function taskRoutes(app: FastifyInstance) {
       title: body.title,
       description: body.description,
       priority: body.priority,
+      startDate: body.startDate ? new Date(body.startDate) : undefined,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       estimatedEffort: body.estimatedEffort?.toString(),
+      reportedBy: request.jwtPayload.sub,
     }).returning();
 
     await writeAuditLog(db, {
@@ -227,6 +229,7 @@ export async function taskRoutes(app: FastifyInstance) {
     if (body.description !== undefined) updateData["description"] = body.description;
     if (body.priority !== undefined) updateData["priority"] = body.priority;
     if (body.phaseId !== undefined) updateData["phaseId"] = body.phaseId;
+    if (body.startDate !== undefined) updateData["startDate"] = body.startDate ? new Date(body.startDate) : null;
     if (body.dueDate !== undefined) updateData["dueDate"] = body.dueDate ? new Date(body.dueDate) : null;
     if (body.estimatedEffort !== undefined) updateData["estimatedEffort"] = body.estimatedEffort?.toString() ?? null;
 

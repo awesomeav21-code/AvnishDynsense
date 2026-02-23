@@ -17,6 +17,7 @@ const createTagSchema = z.object({
 const updateTagSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  archived: z.boolean().optional(),
 });
 
 const tagTaskSchema = z.object({
@@ -24,24 +25,47 @@ const tagTaskSchema = z.object({
   tagId: z.string().uuid(),
 });
 
+const MUTATE_ROLES = ["site_admin", "pm"];
+
+function requireTagMutateRole(role: string) {
+  if (!MUTATE_ROLES.includes(role)) {
+    throw AppError.forbidden("Only admins and project managers can manage tags");
+  }
+}
+
 export async function tagRoutes(app: FastifyInstance) {
   const env = app.env as Env;
   const db = getDb(env);
 
   app.addHook("preHandler", authenticate);
 
-  // GET / — list all tags for tenant
+  // GET / — list all tags for tenant with task counts
   app.get("/", async (request) => {
     const { tenantId } = request.jwtPayload;
-    const rows = await db.select().from(tags)
+
+    const rows = await db
+      .select({
+        id: tags.id,
+        name: tags.name,
+        color: tags.color,
+        archived: tags.archived,
+        isDefault: tags.isDefault,
+        createdAt: tags.createdAt,
+        taskCount: sql<number>`coalesce(count(${taskTags.taskId}), 0)::int`,
+      })
+      .from(tags)
+      .leftJoin(taskTags, eq(tags.id, taskTags.tagId))
       .where(eq(tags.tenantId, tenantId))
+      .groupBy(tags.id)
       .orderBy(desc(tags.createdAt));
+
     return { data: rows };
   });
 
-  // POST / — create a tag
+  // POST / — create a tag (admin + PM only)
   app.post("/", async (request, reply) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role } = request.jwtPayload;
+    requireTagMutateRole(role);
     const body = createTagSchema.parse(request.body);
 
     const [created] = await db.insert(tags).values({
@@ -53,9 +77,10 @@ export async function tagRoutes(app: FastifyInstance) {
     reply.status(201).send({ data: created });
   });
 
-  // PATCH /:id — update a tag
+  // PATCH /:id — update a tag (admin + PM only)
   app.patch("/:id", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role } = request.jwtPayload;
+    requireTagMutateRole(role);
     const { id } = request.params as { id: string };
     const body = updateTagSchema.parse(request.body);
 
@@ -72,9 +97,10 @@ export async function tagRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
-  // DELETE /:id — delete a tag (cascades to task_tags)
+  // DELETE /:id — delete a tag (admin + PM only, cascades to task_tags)
   app.delete("/:id", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role } = request.jwtPayload;
+    requireTagMutateRole(role);
     const { id } = request.params as { id: string };
 
     const existing = await db.query.tags.findFirst({

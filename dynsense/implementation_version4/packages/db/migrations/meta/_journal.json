@@ -8,6 +8,20 @@
       "when": 1771816370397,
       "tag": "0000_giant_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771902770000,
+      "tag": "0001_add_tags_archived_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771989170000,
+      "tag": "0002_add_tasks_startdate_reportedby",
+      "breakpoints": true
     }
   ]
 }

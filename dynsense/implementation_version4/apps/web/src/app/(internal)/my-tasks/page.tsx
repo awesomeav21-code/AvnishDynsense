@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { KanbanView } from "@/components/views/kanban-view";
 import { CalendarView } from "@/components/views/calendar-view";
@@ -66,7 +67,39 @@ interface Project {
   name: string;
 }
 
+interface Phase {
+  id: string;
+  projectId: string;
+  name: string;
+  position: number;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 export default function MyTasksPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-4">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-12 bg-white rounded border animate-pulse" />
+        ))}
+      </div>
+    }>
+      <MyTasksContent />
+    </Suspense>
+  );
+}
+
+function MyTasksContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const highlightParam = searchParams.get("highlight");
+
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -76,23 +109,36 @@ export default function MyTasksPage() {
   const [filterProjectId, setFilterProjectId] = useState("all");
   const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   // New task form state
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newProjectId, setNewProjectId] = useState("");
   const [newPriority, setNewPriority] = useState("medium");
+  const [newStartDate, setNewStartDate] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newEstimatedEffort, setNewEstimatedEffort] = useState("");
+  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newPhaseId, setNewPhaseId] = useState("");
   const [creating, setCreating] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [phases, setPhases] = useState<Phase[]>([]);
 
   useEffect(() => {
     Promise.all([
       api.getTasks({ limit: 200 }),
       api.getProjects(),
+      api.getUsers(),
     ])
-      .then(([tasksRes, projectsRes]) => {
+      .then(([tasksRes, projectsRes, usersRes]) => {
         setTasks(tasksRes.data);
         setProjects(projectsRes.data);
+        setUsers(usersRes.data.filter((u) => u.status !== "deactivated"));
         if (projectsRes.data.length > 0) {
           setNewProjectId(projectsRes.data[0]!.id);
         }
@@ -101,38 +147,97 @@ export default function MyTasksPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Fetch phases when selected project changes
+  useEffect(() => {
+    if (!newProjectId) { setPhases([]); return; }
+    api.getPhases(newProjectId)
+      .then((res) => setPhases(res.data))
+      .catch(() => setPhases([]));
+  }, [newProjectId]);
+
+  // Close project dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+        setProjectDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Handle highlight param from dependency graph navigation
+  useEffect(() => {
+    if (highlightParam && !loading) {
+      setViewMode("list");
+      setFilterStatus("all");
+      setFilterProjectId("all");
+      setHighlightedTaskId(highlightParam);
+
+      // Clean up the URL query param without a full navigation
+      router.replace("/my-tasks", { scroll: false });
+
+      // Wait for render then scroll to the task
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      });
+
+      // Auto-clear highlight after 3 seconds
+      const timer = setTimeout(() => setHighlightedTaskId(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightParam, loading, router]);
+
   const handleCreateTask = useCallback(async () => {
     if (!newTitle.trim() || !newProjectId) return;
     setCreating(true);
     try {
+      const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
       const res = await api.createTask({
         projectId: newProjectId,
         title: newTitle.trim(),
+        description: newDescription.trim() || undefined,
         priority: newPriority,
+        startDate: newStartDate || undefined,
         dueDate: newDueDate || undefined,
+        estimatedEffort: effort && !isNaN(effort) ? effort : undefined,
+        phaseId: newPhaseId || undefined,
       });
+
+      // Assign user if selected
+      if (newAssigneeId) {
+        await api.assignTask(res.data.id, newAssigneeId).catch(() => {});
+      }
+
       setTasks((prev) => [
         {
           id: res.data.id,
           title: newTitle.trim(),
           status: "created",
           priority: newPriority,
-          assigneeId: null,
+          assigneeId: newAssigneeId || null,
           dueDate: newDueDate || null,
           projectId: newProjectId,
         },
         ...prev,
       ]);
       setNewTitle("");
+      setNewDescription("");
       setNewPriority("medium");
+      setNewStartDate("");
       setNewDueDate("");
+      setNewEstimatedEffort("");
+      setNewAssigneeId("");
+      setNewPhaseId("");
       setShowNewTask(false);
     } catch {
       setError("Failed to create task");
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newProjectId, newPriority, newDueDate]);
+  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId]);
 
   const handleStatusChange = useCallback(async (taskId: string, newStatus: string) => {
     setChangingStatusId(null);
@@ -201,7 +306,7 @@ export default function MyTasksPage() {
 
       {/* New task form */}
       {showNewTask && (
-        <div className="bg-white rounded-lg border p-4 space-y-3">
+        <div className="bg-white rounded-lg border p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Create New Task</h3>
             <button onClick={() => setShowNewTask(false)} className="text-gray-400 hover:text-gray-600">
@@ -210,45 +315,142 @@ export default function MyTasksPage() {
               </svg>
             </button>
           </div>
-          <input
-            type="text"
-            autoFocus
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleCreateTask(); if (e.key === "Escape") setShowNewTask(false); }}
-            placeholder="Task title..."
-            className="w-full text-sm px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
-          />
-          <div className="flex items-center gap-3 flex-wrap">
-            <select
-              value={newProjectId}
-              onChange={(e) => setNewProjectId(e.target.value)}
-              className="text-xs px-2 py-1.5 border rounded-md"
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <select
-              value={newPriority}
-              onChange={(e) => setNewPriority(e.target.value)}
-              className="text-xs px-2 py-1.5 border rounded-md"
-            >
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+
+          {/* Title */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Title *</label>
             <input
-              type="date"
-              value={newDueDate}
-              onChange={(e) => setNewDueDate(e.target.value)}
-              className="text-xs px-2 py-1.5 border rounded-md"
+              type="text"
+              autoFocus
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") setShowNewTask(false); }}
+              placeholder="Task title..."
+              className="w-full text-sm px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
             />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Description</label>
+            <textarea
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="Add details about this task..."
+              rows={3}
+              className="w-full text-xs px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 resize-none"
+            />
+          </div>
+
+          {/* Row 1: Project, Phase, Assignee */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Project *</label>
+              <select
+                value={newProjectId}
+                onChange={(e) => { setNewProjectId(e.target.value); setNewPhaseId(""); }}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Phase</label>
+              <select
+                value={newPhaseId}
+                onChange={(e) => setNewPhaseId(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              >
+                <option value="">No phase</option>
+                {phases.map((ph) => (
+                  <option key={ph.id} value={ph.id}>{ph.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Assign To</label>
+              <select
+                value={newAssigneeId}
+                onChange={(e) => setNewAssigneeId(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              >
+                <option value="">Unassigned</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Priority, Start Date, Due Date, Estimated Effort */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Priority</label>
+              <select
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Start Date</label>
+              <input
+                type="date"
+                value={newStartDate}
+                onChange={(e) => setNewStartDate(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Due Date</label>
+              <input
+                type="date"
+                value={newDueDate}
+                min={newStartDate || undefined}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                className={`w-full text-xs px-2 py-1.5 border rounded-md ${
+                  newDueDate && newDueDate < new Date().toISOString().split("T")[0]!
+                    ? "border-red-400 text-red-600"
+                    : ""
+                }`}
+              />
+              {newDueDate && newDueDate < new Date().toISOString().split("T")[0]! && (
+                <span className="text-[10px] text-red-500 mt-0.5 block">Overdue</span>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Estimated Effort (hrs)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={newEstimatedEffort}
+                onChange={(e) => setNewEstimatedEffort(e.target.value)}
+                placeholder="e.g. 4"
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={() => setShowNewTask(false)}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50 mr-2"
+            >
+              Cancel
+            </button>
             <button
               onClick={handleCreateTask}
               disabled={creating || !newTitle.trim() || !newProjectId}
-              className="ml-auto px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
+              className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
             >
               {creating ? "Creating..." : "Create Task"}
             </button>
@@ -307,36 +509,42 @@ export default function MyTasksPage() {
                 </div>
               )}
 
-              {/* Project switcher */}
+              {/* Project switcher dropdown */}
               {projects.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
+                <div className="relative" ref={projectDropdownRef}>
                   <button
-                    onClick={() => setFilterProjectId("all")}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      filterProjectId === "all"
-                        ? "bg-ai text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    }`}
+                    onClick={() => setProjectDropdownOpen((o) => !o)}
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-full bg-ai text-white transition-colors hover:bg-ai/90"
                   >
-                    All Projects ({tasks.length})
+                    {filterProjectId === "all"
+                      ? `All Projects (${tasks.length})`
+                      : `${projects.find((p) => p.id === filterProjectId)?.name ?? "Project"} (${tasks.filter((t) => t.projectId === filterProjectId).length})`}
+                    <svg className={`w-3 h-3 transition-transform ${projectDropdownOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </button>
-                  {projects.map((p) => {
-                    const count = tasks.filter((t) => t.projectId === p.id).length;
-                    if (count === 0) return null;
-                    return (
+                  {projectDropdownOpen && (
+                    <div className="absolute z-20 mt-1 bg-white border rounded-lg shadow-lg py-1 min-w-[200px]">
                       <button
-                        key={p.id}
-                        onClick={() => setFilterProjectId(p.id)}
-                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                          filterProjectId === p.id
-                            ? "bg-ai text-white"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        }`}
+                        onClick={() => { setFilterProjectId("all"); setProjectDropdownOpen(false); }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${filterProjectId === "all" ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
                       >
-                        {p.name} ({count})
+                        All Projects ({tasks.length})
                       </button>
-                    );
-                  })}
+                      {projects.map((p) => {
+                        const count = tasks.filter((t) => t.projectId === p.id).length;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => { setFilterProjectId(p.id); setProjectDropdownOpen(false); }}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${filterProjectId === p.id ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                          >
+                            {p.name} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -367,11 +575,19 @@ export default function MyTasksPage() {
                   {filtered.map((task) => {
                     const isSaving = savingIds.has(task.id);
                     const isChanging = changingStatusId === task.id;
+                    const isHighlighted = highlightedTaskId === task.id;
 
                     return (
                       <div
                         key={task.id}
-                        className={`flex items-center gap-4 px-4 py-3 transition-colors ${isSaving ? "opacity-60" : "hover:bg-gray-50"}`}
+                        ref={isHighlighted ? highlightRef : undefined}
+                        className={`flex items-center gap-4 px-4 py-3 transition-all duration-500 ${
+                          isHighlighted
+                            ? "bg-blue-50 ring-2 ring-blue-400 ring-inset animate-pulse"
+                            : isSaving
+                              ? "opacity-60"
+                              : "hover:bg-gray-50"
+                        }`}
                       >
                         <div className="flex-1 min-w-0">
                           <Link href={`/tasks/${task.id}`} className="text-sm font-medium text-gray-900 truncate hover:text-ai transition-colors block">
