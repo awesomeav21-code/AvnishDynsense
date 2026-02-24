@@ -22,6 +22,13 @@
       "when": 1771989170000,
       "tag": "0002_add_tasks_startdate_reportedby",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772075570000,
+      "tag": "0003_add_accounts_multi_workspace",
+      "breakpoints": true
     }
   ]
 }

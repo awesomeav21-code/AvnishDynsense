@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { NlQueryPanel } from "@/components/nl-query-panel";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 const mainNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: "grid" },
@@ -12,11 +13,11 @@ const mainNavItems = [
   { label: "My Tasks", href: "/my-tasks", icon: "check-square" },
   { label: "Dependencies", href: "/dependencies", icon: "plug" },
   { label: "Portfolio", href: "/portfolio", icon: "grid" },
-  { label: "AI Review", href: "/ai-review", icon: "ai" },
-  { label: "AI Sessions", href: "/ai-sessions", icon: "ai" },
+  // { label: "AI Review", href: "/ai-review", icon: "ai" },
+  // { label: "AI Sessions", href: "/ai-sessions", icon: "ai" },
   { label: "Notifications", href: "/notifications", icon: "scroll" },
   { label: "Team", href: "/team", icon: "users" },
-  { label: "Integrations", href: "/integrations", icon: "plug" },
+  // { label: "Integrations", href: "/integrations", icon: "plug" },
   { label: "Audit Log", href: "/audit", icon: "scroll" },
 ];
 
@@ -47,7 +48,10 @@ const iconMap: Record<string, React.ReactNode> = {
 export default function InternalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [user, setUser] = useState<{
+    name: string; email: string; role: string; tenantId: string;
+    workspaces: Array<{ tenantId: string; tenantName: string; tenantSlug: string; role: string }>;
+  } | null>(null);
   const [queryOpen, setQueryOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
 
@@ -87,10 +91,22 @@ export default function InternalLayout({ children }: { children: React.ReactNode
     <div className="flex min-h-screen">
       <aside className="w-56 border-r bg-white flex flex-col">
         <div className="p-4 border-b">
-          <Link href="/dashboard" className="font-bold text-lg text-ai">
-            Dynsense
-          </Link>
-          <p className="text-xs text-gray-400 mt-0.5">Project Management</p>
+          {user ? (
+            <WorkspaceSwitcher
+              currentTenantId={user.tenantId}
+              workspaces={user.workspaces}
+              onSwitch={async (tenantId) => {
+                const res = await api.switchWorkspace(tenantId);
+                api.setTokens(res.accessToken, res.refreshToken);
+                window.location.href = "/dashboard";
+              }}
+            />
+          ) : (
+            <>
+              <Link href="/dashboard" className="font-bold text-lg text-ai">Dynsense</Link>
+              <p className="text-xs text-gray-400 mt-0.5">Project Management</p>
+            </>
+          )}
         </div>
 
         {/* Search trigger */}

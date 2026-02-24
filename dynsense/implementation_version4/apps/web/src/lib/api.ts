@@ -86,6 +86,41 @@ class ApiClient {
     });
   }
 
+  loginIdentify(email: string, password: string) {
+    return this.request<{
+      requiresWorkspaceSelection: boolean;
+      accessToken?: string;
+      refreshToken?: string;
+      user?: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
+      workspaces?: Array<{ tenantId: string; tenantName: string; tenantSlug: string; userId: string; role: string }>;
+    }>("/auth/login/identify", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  loginSelect(email: string, password: string, tenantId: string) {
+    return this.request<{
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
+    }>("/auth/login/select", {
+      method: "POST",
+      body: JSON.stringify({ email, password, tenantId }),
+    });
+  }
+
+  switchWorkspace(tenantId: string) {
+    return this.request<{
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
+    }>("/auth/switch-workspace", {
+      method: "POST",
+      body: JSON.stringify({ tenantId }),
+    });
+  }
+
   register(data: { email: string; password: string; name: string; workspaceName: string }) {
     return this.request<{
       accessToken: string;
@@ -98,7 +133,11 @@ class ApiClient {
   }
 
   getMe() {
-    return this.request<{ id: string; email: string; name: string; role: string; tenantId: string }>("/auth/me");
+    return this.request<{
+      id: string; email: string; name: string; role: string; tenantId: string;
+      accountId?: string;
+      workspaces: Array<{ tenantId: string; tenantName: string; tenantSlug: string; userId: string; role: string }>;
+    }>("/auth/me");
   }
 
   // Projects
@@ -326,6 +365,13 @@ class ApiClient {
     if (params?.limit) query.set("limit", String(params.limit));
     const qs = query.toString();
     return this.request<{ data: Array<{ id: string; type: string; title: string; body: string | null; data: unknown; readAt: string | null; createdAt: string }> }>(`/notifications${qs ? `?${qs}` : ""}`);
+  }
+
+  sendNotification(data: { userId: string; title: string; body?: string; taskId?: string }) {
+    return this.request<{ data: { id: string } }>("/notifications", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
   markNotificationRead(id: string) {

@@ -165,9 +165,7 @@ function MyTasksContent() {
         setCurrentUser(meRes);
         setNewReportedBy(meRes.id);
         setTags(tagsRes.data.filter((t) => !t.archived));
-        if (projectsRes.data.length > 0) {
-          setNewProjectId(projectsRes.data[0]!.id);
-        }
+        setNewProjectId("");
       })
       .catch(() => setError("Failed to load tasks"))
       .finally(() => setLoading(false));
@@ -411,6 +409,7 @@ function MyTasksContent() {
                 onChange={(e) => { setNewProjectId(e.target.value); setNewPhaseId(""); }}
                 className="w-full text-xs px-2 py-1.5 border rounded-md"
               >
+                <option value="">Select a project</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}

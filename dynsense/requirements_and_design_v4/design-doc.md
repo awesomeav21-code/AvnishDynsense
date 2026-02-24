@@ -1,9 +1,9 @@
 # Dynsense — System Design Document
 
-**Version:** 4.0
-**Date:** February 18, 2026
-**Status:** Draft for Review
-**Methodology:** Produced using swarm parallel agent research (3 concurrent agents)
+**Version:** 4.1 (Updated to reflect current implementation)
+**Date:** February 24, 2026
+**Status:** In Progress
+**Last Updated By:** Engineering Team
 
 ---
 
@@ -11,417 +11,577 @@
 
 Dynsense is an AI-native project management platform targeting consultancy firms. The core thesis: **"The AI runs the project. The human supervises."** The system combines a full-featured PM tool (tasks, dependencies, checklists, comments, audit trails) with an AI orchestration engine that generates work breakdown structures, prioritizes tasks, predicts risks, nudges team members, and generates reports — all under configurable human oversight.
 
-**Timeline:** 12 months, 4 releases (R0-R3), 24 sprints (2-week each)
-**Team:** 5-7 engineers (2 backend, 1-2 AI/ML, 1-2 fullstack, 1 DevOps)
-**Total Features:** 115 across all releases
+**Current State:** R0 and R1 are built and functional. The monorepo, database schema (32 tables), authentication with multi-workspace support, 28 API route modules, and 26 frontend pages are implemented and working. R1 additions include notifications with send-to-team functionality, four view modes (kanban, calendar, table, timeline), saved views, recurring tasks, and reminders. AI capabilities (orchestrator, sessions, hooks) are scaffolded with backend routes and schema in place. Integration routes (GitHub, Slack, SSO) are scaffolded but not yet connected.
 
 ---
 
-## 2. Build Scope
+## 2. Build Status
 
-### 2.1 Sprint Overview — All Not Started (Fresh Build)
+### 2.1 Sprint Status
 
 | Sprint | Scope | Status |
 |--------|-------|--------|
-| **R0-1** | Infrastructure + Schema | NOT STARTED |
-| **R0-2** | Auth + RBAC + Core API (9 modules) | NOT STARTED |
-| **R0-3** | Agent SDK Foundation (orchestrator, hooks, MCP) | NOT STARTED |
-| **R0-4** | AI Core Capabilities (WBS, review UI, shadow mode) | NOT STARTED |
-| **R0-5** | What's Next + Summary + Frontend Core | NOT STARTED |
-| **R0-6** | Confidence, Evaluation, Monitoring, Polish | NOT STARTED |
+| **R0-1** | Infrastructure + Schema | COMPLETE |
+| **R0-2** | Auth + RBAC + Core API | COMPLETE |
+| **R0-3** | Agent SDK Foundation | SCAFFOLDED (routes + schema exist, orchestrator wired) |
+| **R0-4** | AI Core Capabilities | SCAFFOLDED (review UI exists, sessions table live) |
+| **R0-5** | Frontend Core (all pages) | COMPLETE |
+| **R0-6** | Polish, notifications, audit | COMPLETE |
+| **R1-1** | Notifications + Send Notification | COMPLETE |
+| **R1-2** | Views (Kanban, Calendar, Table, Timeline) | COMPLETE |
+| **R1-3** | Saved Views + Recurring Tasks + Reminders | COMPLETE |
+| **R1-4** | Integration routes (GitHub, Slack, SSO) | SCAFFOLDED |
 
-### 2.2 Target State (R0 Delivery)
+### 2.2 What Is Built (Current State)
 
-**Infrastructure & Schema (R0-1):**
-- Turborepo monorepo with 4 packages (web, agents, db, shared) via pnpm workspaces
-- Next.js 14+ App Router as the single application (API Routes + UI)
-- 19 Drizzle ORM tables in @vercel/postgres with RLS policies
-- @vercel/kv for event pub/sub, rate limiting, session storage, cost tracking
-- Pinecone SDK for vector embeddings (1536-dim, tenant-scoped)
-- GitHub Actions CI/CD pipeline
+**Infrastructure (COMPLETE):**
+- Turborepo monorepo with pnpm workspaces
+- 4 packages: `apps/api`, `apps/web`, `packages/db`, `packages/shared`
+- Plus `packages/agents` for AI orchestration
+- PostgreSQL 16 via Drizzle ORM (32 tables, 4 migrations applied)
+- Node >=20.0.0, pnpm@9.15.4
 
-**Auth & Core API (R0-2):**
-- Auth.js v5+ credentials provider with bcrypt (cost 12)
-- src/middleware.ts: tenant isolation + RBAC route guards + @vercel/kv rate limiting
-- 9 Next.js API route modules: auth, users, projects, tasks, dependencies, comments, checklists, audit, config
-- Field-level audit trail, DAG dependency detection, sub-tasks, @mentions, checklists
+**Auth & Core API (COMPLETE):**
+- Fastify 5 REST API on port 3001 with JWT auth (@fastify/jwt)
+- Multi-workspace login: global accounts table + per-tenant user memberships
+- Login flow: email/password + workspace name -> JWT (access + refresh tokens)
+- RBAC: site_admin, pm, developer, client
+- 28 API route modules fully implemented
+- Field-level audit trail with actor tracking (human vs AI)
+- DAG dependency detection with BFS circular check
 
-**Agent SDK Foundation (R0-3):**
-- AIOrchestrator with 7-stage pipeline
-- 4 subagent definitions: wbs-generator (Opus), whats-next (Sonnet), nl-query (Sonnet), summary-writer (Sonnet)
-- 3 MCP servers: pm-db, pinecone, pm-events (@vercel/kv)
-- 8 lifecycle hooks in deterministic order
-- Permission chain (4-step evaluation)
-- Autonomy policy engine (shadow/propose/execute)
-- Session management backed by @vercel/kv
+**Frontend (COMPLETE):**
+- Next.js 15 App Router on port 3000
+- 26 pages across auth, main nav, views, settings, and AI
+- Tailwind CSS styling, Inter font, text-xs baseline
+- API client class with token management and auto-refresh
 
-### 2.3 Full Build Scope by Release
-
-| Area | Work | Target |
-|------|------|--------|
-| Infrastructure + Schema | Monorepo, @vercel/postgres, 19 tables, CI/CD | R0-1 |
-| Auth + Core API | Auth.js v5+, 9 API modules, audit trail, RBAC | R0-2 |
-| Agent SDK | Orchestrator, 4 agents, 3 MCP servers, 8 hooks, sessions | R0-3 |
-| AI Core Capabilities | WBS generator, AI review UI, shadow mode | R0-4 |
-| Frontend Core | Dashboard, task detail, auth pages, API client | R0-5 |
-| AI Polish + Monitoring | Confidence checks, golden tests, NL query panel, Sentry | R0-6 |
-| Advanced AI + Integrations | Risk predictor, AI PM agent, scope creep, Git/Slack | R1 |
-| Client Portal + Monetization | Client portal, billing, goals, automations, docs | R2 |
-| Per-Tenant AI + Enterprise | SOW generator, per-tenant learning, SOC 2 | R3 |
+**AI (SCAFFOLDED):**
+- Database tables: ai_actions, ai_sessions, ai_agent_configs, ai_cost_log, ai_hook_log, ai_mcp_servers
+- API routes: POST /ai/execute, POST /ai/:id/review, GET /ai/sessions/:id
+- AI review UI page with approval/rejection flow
+- NL query panel component (Cmd+K)
+- Notifications for AI action proposals
 
 ---
 
 ## 3. System Architecture
 
-### 3.1 High-Level Architecture
+### 3.1 High-Level Architecture (As Built)
 
 ```
                         CLIENT LAYER
-     Next.js 14+ (App Router, RSC) + Shadcn UI + Tailwind
-     Internal PM Interface + Client Portal (R2)
+     Next.js 15 (App Router) + Tailwind CSS
+     26 pages: Dashboard, Projects, Tasks, Audit, Settings, etc.
+     Port 3000
                             |
-                       HTTPS / WSS
+                       HTTPS (fetch)
                             |
-                    GATEWAY & AUTH
-     Vercel Edge | Auth.js v5+ | RBAC (4 roles) | @vercel/kv Rate Limiting
+                      REST API LAYER
+     Fastify 5 + TypeScript + @fastify/jwt + Zod validation
+     28 route modules under /api/v1/*
+     Port 3001
                             |
-                   APPLICATION SERVICES
-     Next.js API Routes — 9 Modules R0, 14 Modules Full
-     (auth, users, projects, tasks, dependencies, comments,
-     checklists, audit, config, notification, views, goals,
-     automation, ai)
-           |                |                |
-      AI ENGINE        EVENT BUS       INTEGRATION
-      7-Stage          @vercel/kv      GATEWAY
-      Pipeline         pub/sub         Git, Slack
-      10 Capabilities  channels        Calendar
-           |                |
-                   DATA LAYER
-     @vercel/postgres (PostgreSQL 16) | @vercel/kv | @vercel/blob
-     Pinecone (1536-dim, tenant-scoped)
-     30 tables, RLS, embeddings
+              ┌─────────────┼─────────────┐
+         MIDDLEWARE      DATABASE      AI ENGINE
+         - auth.ts       PostgreSQL    - ai.ts routes
+         - rbac.ts       16 via        - orchestrator
+         - feature-      Drizzle ORM   - sessions
+           flags.ts      32 tables     - hooks (scaffolded)
+         - error-
+           handler.ts
 ```
 
-### 3.2 10-Tier Architecture
-
-| Tier | Technology | Purpose |
-|------|-----------|---------|
-| 1. Client | Next.js 14+, React, Shadcn UI, Tailwind | Internal PM + Client Portal |
-| 2. Gateway | Vercel Edge, Auth.js v5+, @vercel/edge-config | TLS, auth, rate limiting |
-| 3. Application | Next.js API Routes, 9 modules R0 → 14 full | Business logic, CRUD, workflows |
-| 4. AI Engine | Claude API (Opus/Sonnet), 7-stage pipeline | 10 AI capabilities |
-| 5. Event Bus | @vercel/kv pub/sub channels | Async communication |
-| 6. Database | @vercel/postgres (PostgreSQL 16) + Pinecone + @vercel/kv | Persistence, vectors, cache |
-| 7. Integration | OAuth adapters for Git, Slack, Calendar | External signal collection |
-| 8. Security | RLS, encryption, audit trails, SOC 2 | Multi-layer tenant isolation |
-| 9. Deployment | Vercel (web), Vercel Cron Jobs (AI worker) | Serverless orchestration |
-| 10. Observability | Vercel Analytics, Sentry | Metrics, traces, errors |
-
-### 3.3 Module Architecture
-
-Each API module follows the same structure:
+### 3.2 Monorepo Structure
 
 ```
-app/api/v1/{name}/
-  ├── route.ts      # Next.js API Route handler + Zod input validation
-  └── service.ts    # Business logic + Drizzle ORM database operations
+implementation_version4/
+├── apps/
+│   ├── api/                    # Fastify REST API (port 3001)
+│   │   ├── src/
+│   │   │   ├── routes/         # 28 route files
+│   │   │   ├── middleware/     # auth, rbac, feature-flags, error-handler
+│   │   │   ├── config/         # env.ts
+│   │   │   ├── utils/          # errors.ts
+│   │   │   ├── db.ts           # Drizzle DB connection
+│   │   │   └── app.ts          # Fastify app factory
+│   │   └── package.json
+│   └── web/                    # Next.js frontend (port 3000)
+│       ├── src/
+│       │   ├── app/
+│       │   │   ├── (auth)/     # Login, Register
+│       │   │   └── (internal)/ # All authenticated pages
+│       │   ├── components/     # NL query panel, workspace switcher
+│       │   └── lib/
+│       │       └── api.ts      # API client class
+│       └── package.json
+├── packages/
+│   ├── db/                     # Drizzle schema + migrations
+│   │   ├── src/schema/         # 32 table definitions
+│   │   ├── migrations/         # 4 SQL migrations
+│   │   └── src/seed.ts         # Demo data seeder
+│   ├── shared/                 # Types, schemas, constants
+│   │   └── src/
+│   │       ├── types/          # auth, task, project, ai, events
+│   │       ├── schemas/        # Zod validation schemas
+│   │       └── constants/      # roles, permissions, ai-capabilities
+│   └── agents/                 # AI orchestration package
+├── turbo.json
+├── pnpm-workspace.yaml
+└── package.json
 ```
 
-**14 Modules:**
+### 3.3 Key Dependencies
 
-| Module | Release | Status |
-|--------|---------|--------|
-| auth | R0 | NOT STARTED |
-| users | R0 | NOT STARTED |
-| projects | R0 | NOT STARTED |
-| tasks | R0 | NOT STARTED |
-| dependencies | R0 | NOT STARTED |
-| comments | R0 | NOT STARTED |
-| checklists | R0 | NOT STARTED |
-| audit | R0 | NOT STARTED |
-| config | R0 | NOT STARTED |
-| ai | R0 | NOT STARTED |
-| notification | R1 | NOT STARTED |
-| views | R1 | NOT STARTED |
-| goals | R2 | NOT STARTED |
-| automation | R2 | NOT STARTED |
+| Package | Version | Purpose |
+|---------|---------|---------|
+| fastify | 5.2.0 | REST API framework |
+| @fastify/jwt | latest | JWT authentication |
+| @fastify/cors | latest | CORS handling |
+| next | 15.1.0 | Frontend framework |
+| react | 19.0.0 | UI library |
+| drizzle-orm | 0.36.0 | Database ORM |
+| postgres | 3.4.8 | PostgreSQL driver |
+| bcrypt | 5.1.0 | Password hashing |
+| zod | latest | Schema validation |
+| nats | 2.28.0 | Event streaming (scaffolded) |
+| ioredis | 5.4.0 | Caching (scaffolded) |
+| recharts | 3.7.0 | Dashboard charts |
 
 ---
 
-## 4. AI Engine Design
+## 4. Frontend Pages (26 Total)
 
-### 4.1 Seven-Stage Orchestration Pipeline
+### 4.1 Authentication Pages
 
-Every AI operation flows through a mandatory pipeline:
+| Route | Page | Description |
+|-------|------|-------------|
+| `/login` | Login | Email + password + workspace name field (workspace on top) |
+| `/register` | Register | Create new workspace or join existing |
+
+### 4.2 Main Navigation (Active in Sidebar)
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/dashboard` | Dashboard | Project overview, key metrics, charts |
+| `/projects` | Projects | Project list with status indicators |
+| `/projects/[id]` | Project Detail | Individual project with tasks, phases |
+| `/my-tasks` | My Tasks | Personal task list with filters, task creation form |
+| `/dependencies` | Dependencies | Task dependency visualization and management |
+| `/portfolio` | Portfolio | Cross-project portfolio overview |
+| `/notifications` | Notifications | Notification inbox with send notification form |
+| `/team` | Team | Team member list, roles, invite |
+| `/audit` | Audit Log | Activity trail with entity filters (task, project, user, phase) |
+
+### 4.3 View Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/kanban` | Kanban Board | Drag-drop board view |
+| `/calendar` | Calendar | Calendar/timeline view |
+| `/table-view` | Table View | Spreadsheet-style task table |
+| `/timeline` | Timeline | Gantt-style timeline |
+
+### 4.4 Settings Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/settings` | General | Workspace settings |
+| `/settings/priorities` | Priorities | Priority level configuration |
+| `/settings/tags` | Tags | Tag and label management with colors |
+| `/settings/custom-fields` | Custom Fields | Custom field definitions |
+| `/settings/recurring-tasks` | Recurring Tasks | Recurring task schedules |
+
+### 4.5 AI Pages (Hidden from Nav — Kept as Backup)
+
+| Route | Page | Status |
+|-------|------|--------|
+| `/ai-review` | AI Review | Built, hidden from sidebar |
+| `/ai-review/[id]` | AI Action Detail | Built, hidden from sidebar |
+| `/ai-sessions` | AI Sessions | Built, hidden from sidebar |
+| `/integrations` | Integrations | Built, hidden from sidebar |
+
+### 4.6 Sidebar Navigation Order
+
+Active items in the sidebar (top to bottom):
+1. Dashboard
+2. Projects
+3. My Tasks
+4. Dependencies
+5. Portfolio
+6. Notifications
+7. Team
+8. Audit Log
+9. **Settings section:** General, Priorities, Tags, Custom Fields, Recurring Tasks
+
+---
+
+## 5. API Routes (28 Modules)
+
+All routes are under the `/api/v1/` prefix on port 3001.
+
+### 5.1 Authentication
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/register` | Create new workspace + account |
+| POST | `/auth/login/identify` | Verify credentials, return workspace list |
+| POST | `/auth/login/select` | Select workspace, get JWT tokens |
+| POST | `/auth/login` | Direct login with workspace name/slug |
+| POST | `/auth/switch-workspace` | Switch workspace, get new tokens |
+| POST | `/auth/refresh` | Refresh access token |
+| GET | `/auth/me` | Current user profile + workspace list |
+| POST | `/auth/logout` | Clear refresh token |
+
+### 5.2 Core Resources
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/users` | List tenant users |
+| GET | `/users/:id` | Get user by ID |
+| PATCH | `/users/:id/role` | Update role (admin/pm only) |
+| POST | `/users/invite` | Invite user to tenant |
+| DELETE | `/users/:id` | Deactivate user |
+| GET | `/projects` | List projects |
+| POST | `/projects` | Create project |
+| GET | `/projects/:id` | Get project detail |
+| PATCH | `/projects/:id` | Update project |
+| GET | `/tasks` | List tasks (filterable) |
+| GET | `/tasks/whats-next` | Prioritized task list |
+| POST | `/tasks` | Create task |
+| GET | `/tasks/:id` | Get task detail |
+| PATCH | `/tasks/:id` | Update task |
+| DELETE | `/tasks/:id` | Soft delete task |
+| PATCH | `/tasks/:id/status` | Change status with validation |
+| GET | `/tasks/:id/timeline` | Task timeline events |
+| POST | `/tasks/:id/complete` | Mark complete |
+| GET | `/phases` | List phases (by projectId) |
+| POST | `/phases` | Create phase |
+| PATCH | `/phases/:id` | Update phase |
+| DELETE | `/phases/:id` | Delete phase |
+
+### 5.3 Related Resources
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/dependencies/task/:taskId` | List task dependencies |
+| POST | `/dependencies` | Add dependency (with cycle detection) |
+| DELETE | `/dependencies` | Remove dependency |
+| GET | `/comments/task/:taskId` | List task comments |
+| POST | `/comments` | Create comment (@mention extraction) |
+| PATCH | `/comments/:id` | Update comment |
+| DELETE | `/comments/:id` | Delete comment |
+| GET | `/checklists/task/:taskId` | Get task checklists |
+| POST | `/checklists` | Create checklist |
+| POST | `/checklists/:id/items` | Add checklist item |
+| PATCH | `/checklists/:id/items/:itemId` | Toggle item |
+| GET | `/assignments/task/:taskId` | List assignments |
+| POST | `/assignments/task/:taskId` | Assign user |
+| DELETE | `/assignments/task/:taskId/:userId` | Remove assignment |
+| GET | `/tags` | List tags |
+| POST | `/tags` | Create tag |
+| PATCH | `/tags/:id` | Update tag |
+| DELETE | `/tags/:id` | Archive tag |
+| POST | `/tags/:id/tasks/:taskId` | Tag a task |
+| DELETE | `/tags/:id/tasks/:taskId` | Untag a task |
+
+### 5.4 Configuration & Settings
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/config` | Get tenant config |
+| PUT | `/config` | Upsert config key |
+| GET | `/custom-fields` | List custom field definitions |
+| POST | `/custom-fields` | Create custom field |
+| PATCH | `/custom-fields/:id` | Update field definition |
+| GET | `/feature-flags` | List feature flags |
+| PATCH | `/feature-flags/:name` | Toggle flag |
+| GET | `/views` | List saved views |
+| POST | `/views` | Create saved view |
+| DELETE | `/views/:id` | Delete saved view |
+| GET | `/recurring-tasks` | List recurring task configs |
+| POST | `/recurring-tasks` | Create recurring config |
+| PATCH | `/recurring-tasks/:id` | Update config |
+| DELETE | `/recurring-tasks/:id` | Delete config |
+
+### 5.5 Notifications & Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/notifications` | List user notifications (filterable, paginated) |
+| POST | `/notifications` | Send in-app notification to team member |
+| POST | `/notifications/:id/read` | Mark notification as read |
+| POST | `/notifications/read-all` | Mark all as read |
+| GET | `/audit` | Audit log entries (admin/pm, with entity name resolution) |
+
+### 5.6 AI Routes (Scaffolded)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/ai/execute` | Trigger AI capability |
+| POST | `/ai/:id/review` | Approve/reject AI action |
+| GET | `/ai/sessions/:sessionId` | Get AI session state |
+| POST | `/ai-eval/evaluate` | AI confidence evaluation |
+
+### 5.7 Integration Routes (Scaffolded)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/integrations` | List integrations |
+| PATCH | `/integrations/:provider/config` | Update config |
+| POST | `/integrations/:provider/connect` | OAuth flow |
+| POST | `/github/webhook` | GitHub webhook receiver |
+| POST | `/slack/webhook` | Slack event receiver |
+| POST | `/sso/saml/init` | SAML login init |
+| GET | `/search` | Full-text search |
+| GET | `/sse/subscribe` | Server-sent events stream |
+
+---
+
+## 6. Database Schema (32 Tables)
+
+### 6.1 Identity & Multi-Tenancy
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `tenants` | id, name, slug, settings, planTier | Workspace definition |
+| `accounts` | id, email, passwordHash, name | Global identity (multi-workspace) |
+| `users` | id, tenantId, accountId, email, passwordHash, name, role, status, refreshToken | Per-workspace membership |
+
+### 6.2 Core Project Management
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `projects` | id, tenantId, name, description, status, startDate, endDate, wbsBaseline, deletedAt | Projects with soft delete |
+| `phases` | id, tenantId, projectId, name, position | Project phases |
+| `tasks` | id, tenantId, projectId, phaseId, parentTaskId, title, description, status, priority, assigneeId, reportedBy, startDate, dueDate, completedAt, position, deletedAt | Core tasks with sub-task support |
+| `task_assignments` | taskId, userId | Multi-assignee support |
+| `task_dependencies` | id, tenantId, blockerTaskId, blockedTaskId, type | DAG with cycle detection |
+
+### 6.3 Collaboration
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `comments` | id, tenantId, taskId, authorId, body, clientVisible | Task comments |
+| `mentions` | commentId, userId | @mentions |
+| `task_checklists` | id, tenantId, taskId, title, position | Checklist groups |
+| `checklist_items` | id, checklistId, label, completed, position | Checklist items |
+
+### 6.4 Tagging & Metadata
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `tags` | id, tenantId, name, color, archived, isDefault | Tags with colors |
+| `task_tags` | taskId, tagId | Task-tag mapping |
+| `custom_field_definitions` | id, tenantId, projectId, name, fieldType, config | Custom field schemas |
+| `custom_field_values` | id, taskId, fieldId, value | Custom field data |
+
+### 6.5 Workflow & Scheduling
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `recurring_task_configs` | id, tenantId, projectId, title, schedule, cronExpression, enabled, nextRunAt | Recurring tasks |
+| `task_reminders` | id, tenantId, taskId, userId, remindAt, channel, sentAt | Reminders |
+| `notifications` | id, tenantId, userId, type, title, body, data, readAt | In-app notifications |
+| `saved_views` | id, tenantId, name, filters | Saved filters |
+
+### 6.6 Audit & Config
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `audit_log` | id, tenantId, entityType, entityId, action, actorId, actorType, diff, aiActionId | Immutable audit trail |
+| `tenant_configs` | id, tenantId, key, value | Tenant settings |
+
+### 6.7 AI Tables
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `ai_actions` | id, tenantId, capability, status, disposition, input, output, confidence, sessionId | AI execution log |
+| `ai_sessions` | id, tenantId, userId, capability, parentSessionId, turnCount, state, status | Resumable AI sessions |
+| `ai_agent_configs` | id, tenantId, capability, modelOverride, maxTurns, permissionMode, enabled | Per-capability config |
+| `ai_cost_log` | id, tenantId, aiActionId, model, inputTokens, outputTokens, costUsd | Token cost tracking |
+| `ai_hook_log` | id, tenantId, hookName, phase, decision, reason, aiActionId | Hook audit |
+| `ai_mcp_servers` | id, name, status, transport, tools, config | MCP server registry |
+| `embeddings` | id, tenantId, sourceId, sourceType, embedding, createdAt | Vector embeddings |
+
+### 6.8 Integrations
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `integrations` | id, tenantId, provider, enabled, config, credentials | External services |
+| `integration_events` | id, tenantId, integrationId, eventType, payload | Integration event log |
+
+### 6.9 Applied Migrations
+
+1. `0000_giant_supernaut.sql` — Initial schema (all tables + indexes)
+2. `0001_add_tags_archived_default.sql` — Tags: archived, isDefault columns
+3. `0002_add_tasks_startdate_reportedby.sql` — Tasks: startDate, reportedBy columns
+4. `0003_add_accounts_multi_workspace.sql` — Accounts table for multi-workspace
+
+---
+
+## 7. Authentication Flow
+
+### 7.1 Multi-Workspace Model
 
 ```
-Stage 1: TRIGGER
-  Input:  @vercel/kv event / API request / Vercel Cron Job
-  Output: trigger_id, capability, context_requirements
-
-Stage 2: AUTONOMY CHECK
-  Input:  trigger_id, capability, tenant_id
-  Output: disposition (shadow | propose | execute)
-
-Stage 3: CONTEXT ASSEMBLY
-  Input:  capability, context_requirements
-  Output: assembled_context, token_count, RAG results
-  Process: Pinecone (cosine, top-k=10) → event history → domain template → token budget
-
-Stage 4: CONFIDENCE CHECK
-  Input:  assembled_context, token_count
-  Output: confidence_score (0.0-1.0), proceed boolean
-  Threshold: 0.6 default, configurable per capability
-
-Stage 5: LLM CALL
-  Input:  prompt, model, context
-  Output: raw_response, tokens, latency
-  Routing: Opus for generation/risk, Sonnet for queries/summaries
-  Retry: exponential backoff (1s, 2s, 4s), fallback Opus → Sonnet
-
-Stage 6: POST-PROCESSING
-  Input:  raw_response, expected_schema
-  Output: parsed_result, validation_status, actions[]
-  Validation via Zod, retry once on parse failure
-
-Stage 7: DISPOSITION
-  Input:  parsed_result, disposition_mode
-  Output: ai_action_id, status
-  Shadow: log only | Propose: create for review | Execute: apply + log
+accounts (global identity)
+    |
+    ├── users (tenant: Acme Consulting) → role: site_admin
+    ├── users (tenant: Other Workspace) → role: developer
+    └── ...
 ```
 
-### 4.2 Ten AI Capabilities
+### 7.2 Login Flow
 
-| # | Capability | Model | Release | Token Profile | Purpose |
-|---|-----------|-------|---------|---------------|---------|
-| 1 | NL-to-WBS Generator | Opus | R0 | 5K/3K | Domain-aware project decomposition |
-| 2 | What's Next Engine | Rules→Sonnet | R0→R1 | 1K/500 | Per-developer task prioritization |
-| 3 | NL Query Engine | Sonnet | R0 | 2K/1K | Natural language project queries |
-| 4 | Summary Engine | Sonnet | R0 | 3K/1K | Daily/weekly/client summaries |
-| 5 | Risk Predictor | Opus | R1 | 4K/2K | Delay pattern analysis |
-| 6 | AI PM Agent | Sonnet | R1 | 2K/500 | 15-min autonomous loop |
-| 7 | Scope Creep Detector | Sonnet | R1 | 3K/1K | WBS baseline delta monitoring |
-| 8 | AI Writing Assistant | Sonnet | R2 | 2K/1K | Content generation/improvement |
-| 9 | SOW Generator | Opus | R3 | 8K/5K | Statements of Work from history |
-| 10 | Per-Tenant Learning | RAG | R3 | Variable | Org-specific intelligence |
+1. User enters: workspace name, email, password
+2. `POST /auth/login` — validates credentials, matches workspace by slug or name (case-insensitive)
+3. Returns: accessToken (JWT with sub, accountId, tenantId, role) + refreshToken
+4. Frontend stores tokens, attaches Authorization header on all requests
+5. Workspace switch: `POST /auth/switch-workspace` re-issues tokens for different tenant
 
-### 4.3 Autonomy Policy Engine
+### 7.3 JWT Claims
 
-| Mode | Behavior | Default |
-|------|----------|---------|
-| Shadow | Runs pipeline, logs only. Admin-only review. Trust-building. | No |
-| Propose | Generates proposal, human must approve/reject. | Yes (all) |
-| Execute | Applies changes directly. Low-risk, tenant opt-in. | No |
-
-Constraints: quiet hours (per timezone), nudge limits (2/task/day), confidence thresholds.
-
-### 4.4 Hook System
-
-| Phase | Hook | Purpose |
-|-------|------|---------|
-| PreToolUse (sequential) | tenant-isolator | Block cross-tenant, inject tenant_id |
-| PreToolUse (sequential) | autonomy-enforcer | Shadow/propose/execute enforcement |
-| PreToolUse (sequential) | rate-limiter | Redis sliding window + daily cost cap |
-| PostToolUse (parallel) | cost-tracker | Token/cost to DB + Redis |
-| PostToolUse (parallel) | audit-writer | Hook decision audit trail |
-| PostToolUse (parallel) | traceability | Link tool calls to AI actions |
-| PostToolUse (parallel) | notification-hook | User notifications on mutations |
-| Stop (sequential) | session-manager | Persist session state |
-
-### 4.5 MCP Tool System
-
-| Server | Tools | Access |
-|--------|-------|--------|
-| pm-db | query, mutate, get_by_id | Read + Write (per agent permission) |
-| pinecone | search, search_by_text | Read-only |
-| pm-events | publish, subscribe | Event emission via @vercel/kv |
-
----
-
-## 5. Database Design
-
-### 5.1 Schema (30 Tables at Full Build)
-
-**Core (R0):** tenants, users, projects, phases, tasks, task_assignments, task_dependencies, comments, mentions, task_checklists, checklist_items, audit_log, tenant_configs
-
-**AI (R0):** ai_actions, ai_cost_log, ai_agent_configs, ai_sessions, ai_hook_log, ai_mcp_servers
-
-**Extensions (R1-R2):** tags, task_tags, embeddings, custom_field_definitions, custom_field_values, saved_views, notifications, notification_preferences, reminders, goals, goal_task_links, automation_rules, forms, documents
-
-### 5.2 Tenant Isolation (Three Layers)
-
-1. **JWT Claims:** tenant_id in every access token
-2. **Application Middleware:** SET LOCAL app.current_tenant_id per request
-3. **PostgreSQL RLS:** USING clause on all 30 tables
-
-### 5.3 Indexing Strategy
-
-- tenant_id first in all composite indexes
-- GIN for full-text search
-- IVFFlat for pgvector (R0-R2), HNSW (R3+)
-- Partial indexes on soft-delete flags
-- Monthly partitioning on audit_log at 1M+ rows
-
----
-
-## 6. Event-Driven Architecture
-
-### 6.1 NATS JetStream (12 Streams)
-
-| Stream | Key Subjects | Key Consumers |
-|--------|-------------|---------------|
-| pm.tasks | status_changed, assigned, completed, dependency_resolved | audit, ai-adaptive, embedding, notification, projection, automation |
-| pm.projects | created, updated, phase_changed, baseline_set | ai-summarizer, embedding, scope-creep |
-| pm.comments | created, updated, mention_created | embedding, notification |
-| pm.ai | action_proposed, approved, rejected, executed, confidence_low | traceability, cost-tracker, evaluation |
-| pm.integrations | git_commit, git_pr_merged, slack_message | ai-adaptive, task-module |
-| pm.notifications | created | notification-router |
-| pm.reminders | due | notification-generator |
-| pm.goals | progress_updated, at_risk | notification, ai-adaptive |
-| pm.automations | triggered, executed | audit-writer |
-| pm.forms | submitted | task-module |
-| pm.documents | created, updated | embedding-pipeline |
-| pm.system | config_changed, tenant_created | cache-invalidation |
-
-### 6.2 Consumer Guarantees
-
-- At-least-once delivery with idempotent processing
-- DLQ: 3 retries (1s, 5s, 25s), 7-day retention
-- CloudWatch alarm on DLQ messages
-
----
-
-## 7. Frontend Architecture
-
-### 7.1 Technology
-
-- Next.js 15 App Router + React Server Components
-- Shadcn UI (Radix) + Tailwind CSS
-- TanStack Query v5 for server state
-- WebSocket for real-time (R1+)
-
-### 7.2 Route Structure
-
-```
-app/
-├── (internal)/              # PM interface
-│   ├── dashboard/           # What's Next, AI summary, projects
-│   ├── projects/[id]/       # Project detail + task views
-│   ├── ai-review/           # Pending proposals
-│   ├── notifications/       # Inbox (R1)
-│   ├── goals/               # OKRs (R2)
-│   ├── documents/           # KB (R2)
-│   └── settings/            # Profile, AI policy, integrations
-├── (portal)/                # Client-facing (R2)
-│   └── [tenantSlug]/
-└── (auth)/                  # Login, register, SSO
+```json
+{
+  "sub": "user-uuid",
+  "accountId": "account-uuid",
+  "tenantId": "tenant-uuid",
+  "role": "site_admin | pm | developer | client"
+}
 ```
 
-### 7.3 Key UI Surfaces
+---
 
-| Surface | Release | Description |
-|---------|---------|-------------|
-| Dashboard | R0 | What's Next, AI summary, projects, confidence gauges |
-| Task Detail | R0 | Three-column: details + sidebar + activity |
-| AI Review | R0 | High-density proposals with bulk actions |
-| NL Query | R0 | Cmd+K panel, streaming, suggested queries |
-| List View | R0 | Filterable/sortable task list |
-| Kanban Board | R1 | Read-only AI-annotated (R1), drag-drop (R2) |
-| Calendar View | R1 | Month/week/day with task chips |
-| Table View | R1 | Spreadsheet-like with bulk edit |
-| Client Portal | R2 | Milestones, completion %, AI assistant |
+## 8. Key Features (Working)
 
-### 7.4 Design System
+### 8.1 Task Management
+- Create, update, delete tasks with project/phase assignment
+- Status workflow: created → ready → in_progress → review → completed (+ blocked)
+- Priority levels: critical, high, medium, low
+- Sub-tasks (single-level via parentTaskId)
+- Multi-assignee support
+- Tags with colors
+- Custom fields (text, number, date, select)
+- Checklists with items
+- Comments with @mentions
+- Reported-by tracking
 
-- **Typography:** Inter, text-xs (12px) baseline
-- **AI Color:** Violet-600 (#7C3AED)
-- **Confidence:** Green (>0.8), Yellow (0.6-0.8), Red (<0.6)
-- **Priority:** Red (critical), Orange (high), Yellow (medium), Blue (low)
-- **Grid:** 4px base, Tailwind spacing
-- **Animations:** 300ms spring, prefers-reduced-motion
+### 8.2 Project Management
+- Project CRUD with status tracking
+- Phases per project (ordered by position)
+- WBS baseline storage
+- Task counts and progress metrics
+
+### 8.3 Dependencies
+- Blocker/blocked relationships between tasks
+- BFS-based circular dependency detection
+- Visual dependency management page
+
+### 8.4 Notifications
+- In-app notification inbox with unread count
+- Filter by all/unread
+- Mark individual or all as read
+- Send notifications to team members regarding tasks
+- Notification types: ai_nudge, ai_action_proposed, ai_action_executed, mention
+
+### 8.5 Audit Log
+- Immutable activity trail for all mutations
+- Human-readable format: `Task "Name" created by Person`
+- Filter by entity type: task, project, user, phase
+- Search and date range filtering
+- CSV export
+- Pagination with load more
+
+### 8.6 Team Management
+- User list with roles
+- Invite new users
+- Role management (admin/pm only)
+- User deactivation
+
+### 8.7 Settings
+- Priority level configuration
+- Tag management (create, edit, archive, colors)
+- Custom field definitions
+- Recurring task schedules (cron-based)
+- Saved views (filter presets)
 
 ---
 
-## 8. Security Architecture
+## 9. Seed Data (Demo)
 
-### 8.1 Authentication
+### 9.1 Users
 
-| Mechanism | Release |
-|-----------|---------|
-| Auth.js v5+ credentials provider, bcrypt (cost 12+), session JWT | R0 |
-| RBAC: site_admin, pm, developer, client | R0 |
-| SSO: SAML 2.0, OIDC | R1 |
-| MFA: TOTP with recovery codes | R1 |
-| Session hardening | R1 |
+| Email | Name | Role |
+|-------|------|------|
+| admin@acme.com | Acme Consulting Admin | site_admin |
+| pm@acme.com | Acme Consulting PM | pm |
+| dev1@acme.com | Dev One | developer |
+| dev2@acme.com | Dev Two | developer |
+| client@acme.com | Acme Consulting Client | client |
 
-### 8.2 Data Protection
+Password for all: `password123`
+Workspace: `Acme Consulting` (slug: `acme`)
 
-- AES-256 at rest (AWS KMS), TLS 1.3 in transit
-- Client comments redacted before LLM
-- Prompt injection defense: sanitization, structured fields, output validation
+### 9.2 Projects
 
-### 8.3 Compliance
+| Project | Tasks | Description |
+|---------|-------|-------------|
+| Platform Rebuild | 25 | Next.js + Fastify rewrite |
+| Mobile App MVP | 15 | React Native companion app |
+| Client Portal | 10 | Client-facing dashboard |
 
-| Milestone | Release |
-|-----------|---------|
-| SOC 2 controls implementation | R1 |
-| SOC 2 Type I audit | R2 |
-| SOC 2 Type I certification | R3 |
-| SOC 2 Type II evidence | R3 |
+Each project has 4 phases, varied task statuses, dependencies, comments, checklists, and assignments.
 
----
-
-## 9. Infrastructure & Deployment
-
-### 9.1 Services (ECS Fargate)
-
-| Service | R0 Tasks | R3 Tasks | CPU | Memory |
-|---------|----------|----------|-----|--------|
-| API | 2 | 2-8 | 1 vCPU | 2 GB |
-| AI Worker | In-process | 2-6 | 1 vCPU | 4 GB |
-| Web | 2 | 2-4 | 0.5 vCPU | 1 GB |
-| NATS | 3 | 3 | 0.5 vCPU | 1 GB |
-
-### 9.2 Cost Projection
-
-| Release | Monthly Cost |
-|---------|-------------|
-| R0 | $380 |
-| R1 | $565 |
-| R2 (3 tenants) | $1,030 |
-| R3 (10 tenants) | $2,110 |
+### 9.3 Additional Seed Data
+- 6 tags (frontend, backend, urgent, bug, feature, devops)
+- 3 recurring task configs
+- 6 reminders
+- 40 notifications across all users
+- 130+ audit log entries (backfilled for all existing entities)
 
 ---
 
-## 10. Non-Functional Requirements
+## 10. API Middleware
 
-| Category | Target |
-|----------|--------|
-| API latency (p95) | <500ms core, <8s NL query, <30s WBS |
-| Error rate | <0.1% |
-| Availability | 99.9% |
-| Tasks per tenant | 10,000+ |
-| Concurrent tenants (R3) | 100+ |
-| RTO / RPO | <1h / <15min |
-| Encryption | AES-256 at rest, TLS 1.3 in transit |
-| Audit retention | 7 years, immutable |
-| Vector search (p95) | <100ms at 1M embeddings |
+| File | Purpose |
+|------|---------|
+| `auth.ts` | JWT verification, extracts { sub, accountId, tenantId, role } |
+| `rbac.ts` | Role-based access control checks |
+| `feature-flags.ts` | Per-tenant feature flag checking |
+| `error-handler.ts` | Global error handling with AppError utility |
 
 ---
 
-## 11. Architecture Decision Records
+## 11. What's Not Yet Active (Scaffolded / Hidden)
+
+These features have backend routes and/or frontend pages but are not wired into the active navigation or fully operational:
+
+| Feature | Backend | Frontend | Status |
+|---------|---------|----------|--------|
+| AI Review | Routes exist | Page exists | Hidden from nav |
+| AI Sessions | Routes exist | Page exists | Hidden from nav |
+| Integrations (GitHub, Slack) | Routes exist | Page exists | Hidden from nav |
+| SSO/SAML | Routes exist | — | Scaffolded |
+| Server-Sent Events | Route exists | — | Scaffolded |
+| Full-text Search | Route exists | — | Scaffolded |
+| NATS Event Streaming | Package imported | — | Not connected |
+| Redis Caching | Package imported | — | Not connected |
+| Pinecone Vectors | Schema exists | — | Not connected |
+
+---
+
+## 12. Architecture Decision Records
 
 | ADR | Decision | Over | Rationale |
 |-----|----------|------|-----------|
-| 001 | Hosted Claude API | Self-hosted LLM | No GPU ops for 5-person team |
-| 002 | pgvector co-located | Separate vector DB | One DB, SQL JOINs with vectors |
-| 003 | NATS JetStream | Kafka | Lighter ops, sufficient scale |
-| 004 | Shared schema + RLS | Schema-per-tenant | Fast, DB-enforced isolation |
-| 005 | Hybrid pricing | Per-seat only | Aligns cost with AI value |
-| 006 | PostgreSQL 16 | Multi-DB | Single operational surface |
-| 007 | Fastify + TypeScript | NestJS / Python | Shared lang with Next.js |
-| 008 | ECS Fargate | EKS | Zero cluster management |
-| 009 | AWS CDK (TypeScript) | Terraform | Same language as app |
-| 010 | Modular monolith | Microservices | Extract when scaling demands |
-| 011 | Next.js 15 single app | Separate frontends | One codebase, route groups |
-| 012 | CloudWatch + Sentry | Datadog | AWS-native, cost-effective |
+| 001 | Hosted Claude API | Self-hosted LLM | No GPU ops for small team |
+| 002 | PostgreSQL 16 + Drizzle ORM | Prisma / raw SQL | Type-safe queries, migration tooling |
+| 003 | Fastify 5 (separate API) | Next.js API routes | Better performance, cleaner separation |
+| 004 | Shared schema + tenant_id filtering | Schema-per-tenant | Simpler ops, app-layer isolation |
+| 005 | pnpm + Turborepo monorepo | Separate repos | Shared types/schemas, atomic deploys |
+| 006 | JWT (access + refresh) | Session cookies | Stateless API, multi-client support |
+| 007 | Multi-workspace via accounts table | Single-tenant users | Users can belong to multiple workspaces |
+| 008 | Tailwind CSS (no Shadcn) | Shadcn UI | Lighter weight, custom styling |
+| 009 | Zod for all validation | io-ts / Yup | Shared between frontend and backend |
+| 010 | Modular monolith | Microservices | Ship fast, extract later |

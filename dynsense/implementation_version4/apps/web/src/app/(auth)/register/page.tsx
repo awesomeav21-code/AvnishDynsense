@@ -49,6 +49,10 @@ export default function RegisterPage() {
             </div>
           )}
 
+          <p className="text-xs text-gray-400">
+            Already have an account with this email? Use the same password to create a new workspace linked to your existing identity.
+          </p>
+
           <div>
             <label htmlFor="workspaceName" className="block text-xs font-medium text-gray-700 mb-1">
               Workspace Name

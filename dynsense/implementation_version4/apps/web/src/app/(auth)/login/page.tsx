@@ -8,11 +8,22 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const registered = searchParams.get("registered") === "true";
-  const [workspace, setWorkspace] = useState("");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [workspace, setWorkspace] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  function handleError(err: unknown) {
+    if (err instanceof ApiError) {
+      setError(err.message);
+    } else if (err instanceof TypeError && err.message.includes("fetch")) {
+      setError("Cannot reach API server. Is it running on localhost:3001?");
+    } else {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,13 +35,7 @@ export default function LoginPage() {
       api.setTokens(res.accessToken, res.refreshToken);
       router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else if (err instanceof TypeError && err.message.includes("fetch")) {
-        setError("Cannot reach API server. Is it running on localhost:3001?");
-      } else {
-        setError(err instanceof Error ? err.message : "An unexpected error occurred");
-      }
+      handleError(err);
     } finally {
       setLoading(false);
     }
@@ -64,10 +69,11 @@ export default function LoginPage() {
               id="workspace"
               type="text"
               required
+              autoFocus
               value={workspace}
               onChange={(e) => setWorkspace(e.target.value)}
               className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
-              placeholder="My Company"
+              placeholder="e.g. Dynsense"
             />
           </div>
 

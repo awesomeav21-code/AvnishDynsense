@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import crypto from "node:crypto";
 import { eq, and } from "drizzle-orm";
-import { users } from "@dynsense/db";
+import { users, accounts } from "@dynsense/db";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -70,21 +70,37 @@ export async function userRoutes(app: FastifyInstance) {
       role: z.enum(["site_admin", "pm", "developer", "client"]).default("developer"),
     }).parse(request.body);
 
-    // Check for existing user with same email in this tenant
+    // Check for existing membership in this tenant
     const existing = await db.query.users.findFirst({
       where: and(eq(users.email, body.email), eq(users.tenantId, tenantId)),
     });
     if (existing) throw AppError.conflict("A user with this email already exists in the tenant");
 
-    // Create the user with a random temporary password hash
-    const tempHash = crypto.randomBytes(32).toString("hex");
+    // Check for existing global account
+    let account = await db.query.accounts.findFirst({
+      where: eq(accounts.email, body.email),
+    });
+
+    if (!account) {
+      // Create stub account for invited user
+      const tempHash = crypto.randomBytes(32).toString("hex");
+      const [created] = await db.insert(accounts).values({
+        email: body.email,
+        passwordHash: tempHash,
+        name: body.name,
+      }).returning();
+      account = created!;
+    }
+
+    // Create membership linked to account
     const [created] = await db.insert(users).values({
       tenantId,
-      email: body.email,
+      accountId: account.id,
+      email: account.email,
       name: body.name,
       role: body.role,
       status: "invited",
-      passwordHash: tempHash,
+      passwordHash: account.passwordHash,
     }).returning({ id: users.id, email: users.email, name: users.name, role: users.role, status: users.status });
 
     return { data: created };

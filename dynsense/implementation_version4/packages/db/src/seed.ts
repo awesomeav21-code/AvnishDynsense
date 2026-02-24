@@ -1,7 +1,7 @@
 import { createDb } from "./index.js";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, asc } from "drizzle-orm";
 import {
-  tenants, users, projects, phases, tasks,
+  tenants, users, accounts, projects, phases, tasks,
   taskAssignments, taskDependencies, comments,
   taskChecklists, checklistItems, tags, taskTags,
   notifications, recurringTaskConfigs, taskReminders,
@@ -22,13 +22,27 @@ const PASSWORD_HASH = "$2b$12$5t6AFKiPivtsb99gBxVzbO2u9hk1tE.syBUYW7Uh0S/VYgMkSC
 async function seed() {
   console.log("Seeding database with comprehensive demo data...");
 
-  // --- Find existing tenant ---
-  const existingTenant = await db.query.tenants.findFirst({
-    where: eq(tenants.slug, "default"),
+  // --- Find or create tenant ---
+  let existingTenant = await db.query.tenants.findFirst({
+    where: eq(tenants.slug, "dynsense"),
   });
   if (!existingTenant) {
-    console.error("No default tenant found. Run migrations first.");
-    process.exit(1);
+    // Try legacy slug
+    existingTenant = await db.query.tenants.findFirst({
+      where: eq(tenants.slug, "default"),
+    });
+  }
+  if (!existingTenant) {
+    // Create the tenant if it doesn't exist
+    const [created] = await db.insert(tenants).values({
+      name: "Dynsense",
+      slug: "dynsense",
+      planTier: "starter",
+    }).returning();
+    existingTenant = created!;
+  } else {
+    // Rename to proper workspace name
+    await db.update(tenants).set({ name: "Dynsense", slug: "dynsense" }).where(eq(tenants.id, existingTenant.id));
   }
   const tid = existingTenant.id;
 
@@ -55,35 +69,75 @@ async function seed() {
   await db.delete(projects).where(eq(projects.tenantId, tid));
   await db.delete(tags).where(eq(tags.tenantId, tid));
 
-  // --- Ensure we have enough users with varied roles ---
-  const existingUsers = await db.select().from(users).where(eq(users.tenantId, tid));
+  // --- Ensure we have enough users with varied roles + accounts ---
+  const seedUserDefs = [
+    { email: "alice@demo.com", name: "Alice Chen", role: "site_admin" },
+    { email: "bob@demo.com", name: "Bob Martinez", role: "pm" },
+    { email: "carol@demo.com", name: "Carol Johnson", role: "developer" },
+    { email: "dave@demo.com", name: "Dave Kim", role: "developer" },
+    { email: "eve@demo.com", name: "Eve Williams", role: "developer" },
+  ];
 
-  // Update first user to site_admin if exists
-  if (existingUsers.length > 0) {
-    await db.update(users).set({ role: "site_admin", name: "Alice Chen" }).where(eq(users.id, existingUsers[0]!.id));
-  }
-  if (existingUsers.length > 1) {
-    await db.update(users).set({ role: "pm", name: "Bob Martinez" }).where(eq(users.id, existingUsers[1]!.id));
-  }
-  if (existingUsers.length > 2) {
-    await db.update(users).set({ role: "developer", name: "Carol Johnson" }).where(eq(users.id, existingUsers[2]!.id));
+  const existingUsers = await db.select().from(users).where(eq(users.tenantId, tid)).orderBy(asc(users.createdAt));
+
+  // Update existing users with seed names/roles
+  for (let i = 0; i < Math.min(existingUsers.length, seedUserDefs.length); i++) {
+    const def = seedUserDefs[i]!;
+    const user = existingUsers[i]!;
+
+    // Remove old account if email is changing
+    if (user.email !== def.email) {
+      const oldAccount = await db.query.accounts.findFirst({ where: eq(accounts.email, user.email) });
+      if (oldAccount) {
+        await db.delete(accounts).where(eq(accounts.id, oldAccount.id)).catch(() => {});
+      }
+    }
+
+    // Ensure account exists for the seed email
+    let account = await db.query.accounts.findFirst({ where: eq(accounts.email, def.email) });
+    if (!account) {
+      const [created] = await db.insert(accounts).values({
+        email: def.email,
+        passwordHash: PASSWORD_HASH,
+        name: def.name,
+      }).returning();
+      account = created!;
+    } else {
+      await db.update(accounts).set({ passwordHash: PASSWORD_HASH, name: def.name }).where(eq(accounts.id, account.id));
+    }
+
+    await db.update(users).set({
+      role: def.role,
+      name: def.name,
+      email: def.email,
+      passwordHash: PASSWORD_HASH,
+      accountId: account.id,
+    }).where(eq(users.id, user.id));
   }
 
   // Create additional users if fewer than 5
-  const extraUsers: Array<{ email: string; name: string; role: string }> = [];
-  if (existingUsers.length < 4) extraUsers.push({ email: "dave@demo.com", name: "Dave Kim", role: "developer" });
-  if (existingUsers.length < 5) extraUsers.push({ email: "eve@demo.com", name: "Eve Williams", role: "developer" });
+  for (let i = existingUsers.length; i < seedUserDefs.length; i++) {
+    const def = seedUserDefs[i]!;
 
-  if (extraUsers.length > 0) {
-    await db.insert(users).values(
-      extraUsers.map((u) => ({
-        tenantId: tid,
-        email: u.email,
+    // Create or find account
+    let account = await db.query.accounts.findFirst({ where: eq(accounts.email, def.email) });
+    if (!account) {
+      const [created] = await db.insert(accounts).values({
+        email: def.email,
         passwordHash: PASSWORD_HASH,
-        name: u.name,
-        role: u.role,
-      }))
-    ).returning();
+        name: def.name,
+      }).returning();
+      account = created!;
+    }
+
+    await db.insert(users).values({
+      tenantId: tid,
+      accountId: account.id,
+      email: def.email,
+      passwordHash: PASSWORD_HASH,
+      name: def.name,
+      role: def.role,
+    }).returning();
   }
 
   // Re-fetch all users after updates

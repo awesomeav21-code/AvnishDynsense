@@ -15,7 +15,8 @@ interface AuditEntry {
   createdAt: string;
 }
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
+const ENTITY_TYPES = ["all", "task", "project", "user", "phase"];
 
 export default function AuditLogPage() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -39,10 +40,11 @@ export default function AuditLogPage() {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
+      const mapped = res.data.map((d) => ({ ...d, actorName: (d as unknown as AuditEntry).actorName ?? null, entityName: (d as unknown as AuditEntry).entityName ?? null }));
       if (append) {
-        setEntries((prev) => [...prev, ...res.data]);
+        setEntries((prev) => [...prev, ...mapped]);
       } else {
-        setEntries(res.data);
+        setEntries(mapped);
       }
       setHasMore(res.data.length === PAGE_SIZE);
     } catch (err) {
@@ -67,7 +69,7 @@ export default function AuditLogPage() {
     loadEntries(nextPage * PAGE_SIZE, true);
   }
 
-  const entityTypes = ["all", ...new Set(entries.map((e) => e.entityType))];
+  const entityTypes = ENTITY_TYPES;
 
   // Client-side search filter (in addition to server-side)
   const displayed = search.trim()
@@ -207,18 +209,15 @@ export default function AuditLogPage() {
               <div className="flex-shrink-0 w-2 h-2 rounded-full bg-ai" />
               <div className="flex-1 min-w-0">
                 <div className="text-xs">
-                  <span className="font-medium text-gray-900 capitalize">{entry.action.replace(/_/g, " ")}</span>
-                  <span className="text-gray-500"> on </span>
                   <span className="font-medium text-gray-700 capitalize">{entry.entityType}</span>
                   {entry.entityName ? (
-                    <span className="text-gray-600 ml-1">&ldquo;{entry.entityName}&rdquo;</span>
+                    <span className="text-gray-600"> &ldquo;{entry.entityName}&rdquo;</span>
                   ) : (
-                    <span className="text-gray-400 ml-1 font-mono text-[10px]">{entry.entityId?.slice(0, 8) ?? "—"}</span>
+                    <span className="text-gray-400 font-mono text-[10px] ml-1">{entry.entityId?.slice(0, 8) ?? "—"}</span>
                   )}
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">
-                  {entry.actorType === "ai" ? "AI" : "By"}{" "}
-                  <span className="font-medium text-gray-500">{entry.actorName ?? (entry.actorId ? "Unknown user" : "System")}</span>
+                  <span className="text-gray-500"> {entry.action.replace(/_/g, " ")}</span>
+                  <span className="text-gray-500"> by </span>
+                  <span className="font-medium text-gray-900">{entry.actorName ?? (entry.actorType === "ai" ? "AI" : entry.actorId ? "Unknown user" : "System")}</span>
                 </div>
               </div>
               <span className="text-xs text-gray-400 whitespace-nowrap">

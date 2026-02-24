@@ -1,6 +1,7 @@
 // All 19 R0 table schemas — re-exported for Drizzle kit and application use
 // Core tables (FR-600 series): 13 tables
 export { tenants } from "./tenants.js";
+export { accounts } from "./accounts.js";
 export { users } from "./users.js";
 export { projects } from "./projects.js";
 export { phases } from "./phases.js";

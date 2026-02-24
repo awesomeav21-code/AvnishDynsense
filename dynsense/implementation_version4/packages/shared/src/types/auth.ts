@@ -4,6 +4,7 @@ export type Role = "site_admin" | "pm" | "developer" | "client";
 // Ref: design-doc §8.1 — JWT RS256 with tenant_id in claims
 export interface JwtPayload {
   sub: string;
+  accountId?: string;
   tenantId: string;
   role: Role;
   iat: number;
@@ -18,8 +19,17 @@ export interface JwtTokenPair {
 
 export interface AuthUser {
   id: string;
+  accountId?: string;
   tenantId: string;
   email: string;
   role: Role;
   name: string;
+}
+
+export interface WorkspaceMembership {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  userId: string;
+  role: Role;
 }

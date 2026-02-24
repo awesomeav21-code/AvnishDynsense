@@ -1,5 +1,5 @@
 // ---- Types ----
-export type { Role, JwtPayload, JwtTokenPair, AuthUser } from "./types/auth.js";
+export type { Role, JwtPayload, JwtTokenPair, AuthUser, WorkspaceMembership } from "./types/auth.js";
 export type { TaskStatus, TaskPriority, DependencyType, TaskSummary } from "./types/task.js";
 export type { ProjectStatus, ProjectSummary } from "./types/project.js";
 export type {
@@ -31,9 +31,13 @@ export type { NatsStream } from "./constants/nats-streams.js";
 
 // ---- Schemas ----
 export {
-  registerSchema, loginSchema, refreshTokenSchema,
+  registerSchema, loginSchema, loginStep1Schema, loginStep2Schema,
+  switchWorkspaceSchema, refreshTokenSchema,
 } from "./schemas/auth.schemas.js";
-export type { RegisterInput, LoginInput, RefreshTokenInput } from "./schemas/auth.schemas.js";
+export type {
+  RegisterInput, LoginInput, LoginStep1Input, LoginStep2Input,
+  SwitchWorkspaceInput, RefreshTokenInput,
+} from "./schemas/auth.schemas.js";
 
 export {
   createProjectSchema, updateProjectSchema, projectIdParamSchema,

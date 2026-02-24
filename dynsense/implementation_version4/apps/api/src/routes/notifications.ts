@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { notifications } from "@dynsense/db";
+import { notifications, users } from "@dynsense/db";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
@@ -12,6 +12,13 @@ const notificationFilterSchema = z.object({
   unread: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+const sendNotificationSchema = z.object({
+  userId: z.string().uuid(),
+  title: z.string().min(1).max(500),
+  body: z.string().max(2000).optional(),
+  taskId: z.string().uuid().optional(),
 });
 
 export async function notificationRoutes(app: FastifyInstance) {
@@ -45,6 +52,32 @@ export async function notificationRoutes(app: FastifyInstance) {
       .offset(filters.offset);
 
     return { data: rows };
+  });
+
+  // POST / — send a notification to a team member
+  app.post("/", async (request, reply) => {
+    const { tenantId, sub: senderId } = request.jwtPayload;
+    const body = sendNotificationSchema.parse(request.body);
+
+    // Verify target user belongs to same tenant
+    const targetUser = await db.query.users.findFirst({
+      where: and(eq(users.id, body.userId), eq(users.tenantId, tenantId)),
+    });
+    if (!targetUser) throw AppError.notFound("User not found in this workspace");
+
+    // Resolve sender name
+    const sender = await db.query.users.findFirst({ where: eq(users.id, senderId) });
+
+    const [created] = await db.insert(notifications).values({
+      tenantId,
+      userId: body.userId,
+      type: "mention",
+      title: body.title,
+      body: body.body ?? null,
+      data: { senderId, senderName: sender?.name ?? "Unknown", taskId: body.taskId ?? null },
+    }).returning();
+
+    reply.status(201).send({ data: created });
   });
 
   // POST /:id/read — mark a single notification as read
