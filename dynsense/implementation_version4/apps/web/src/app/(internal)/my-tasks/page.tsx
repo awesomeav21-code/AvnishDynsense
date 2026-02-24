@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { KanbanView } from "@/components/views/kanban-view";
 import { CalendarView } from "@/components/views/calendar-view";
 import { TableView } from "@/components/views/table-view";
+import { TimelineView } from "@/components/views/timeline-view";
 
 interface Task {
   id: string;
@@ -37,7 +38,7 @@ const priorityColors: Record<string, string> = {
 const STATUSES = ["created", "ready", "in_progress", "review", "completed", "blocked", "cancelled"];
 const statusTabs = ["all", "in_progress", "ready", "review", "blocked", "completed"];
 
-type ViewMode = "list" | "kanban" | "calendar" | "table";
+type ViewMode = "list" | "kanban" | "calendar" | "table" | "timeline";
 
 const viewTabs: { key: ViewMode; label: string; icon: React.ReactNode }[] = [
   {
@@ -60,6 +61,11 @@ const viewTabs: { key: ViewMode; label: string; icon: React.ReactNode }[] = [
     label: "Table",
     icon: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
   },
+  {
+    key: "timeline",
+    label: "Timeline",
+    icon: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+  },
 ];
 
 interface Project {
@@ -79,6 +85,14 @@ interface User {
   name: string;
   email: string;
   role: string;
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  archived: boolean;
+  taskCount: number;
 }
 
 export default function MyTasksPage() {
@@ -128,17 +142,29 @@ function MyTasksContent() {
   const [creating, setCreating] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [phases, setPhases] = useState<Phase[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [subtaskInput, setSubtaskInput] = useState("");
+  const [newComment, setNewComment] = useState("");
+  const [newReportedBy, setNewReportedBy] = useState("");
 
   useEffect(() => {
     Promise.all([
       api.getTasks({ limit: 200 }),
       api.getProjects(),
       api.getUsers(),
+      api.getMe(),
+      api.getTags(),
     ])
-      .then(([tasksRes, projectsRes, usersRes]) => {
+      .then(([tasksRes, projectsRes, usersRes, meRes, tagsRes]) => {
         setTasks(tasksRes.data);
         setProjects(projectsRes.data);
         setUsers(usersRes.data.filter((u) => u.status !== "deactivated"));
+        setCurrentUser(meRes);
+        setNewReportedBy(meRes.id);
+        setTags(tagsRes.data.filter((t) => !t.archived));
         if (projectsRes.data.length > 0) {
           setNewProjectId(projectsRes.data[0]!.id);
         }
@@ -204,11 +230,40 @@ function MyTasksContent() {
         dueDate: newDueDate || undefined,
         estimatedEffort: effort && !isNaN(effort) ? effort : undefined,
         phaseId: newPhaseId || undefined,
+        reportedBy: newReportedBy || undefined,
       });
 
       // Assign user if selected
       if (newAssigneeId) {
         await api.assignTask(res.data.id, newAssigneeId).catch(() => {});
+      }
+
+      // Create subtasks
+      if (subtasks.length > 0) {
+        await Promise.allSettled(
+          subtasks.map((title) =>
+            api.createTask({
+              projectId: newProjectId,
+              title,
+              priority: newPriority,
+              parentTaskId: res.data.id,
+            })
+          )
+        );
+      }
+
+      // Attach selected tags
+      if (selectedTagIds.size > 0) {
+        await Promise.allSettled(
+          Array.from(selectedTagIds).map((tagId) =>
+            api.addTagToTask(res.data.id, tagId)
+          )
+        );
+      }
+
+      // Post initial comment if provided
+      if (newComment.trim()) {
+        await api.addComment(res.data.id, newComment.trim()).catch(() => {});
       }
 
       setTasks((prev) => [
@@ -231,13 +286,18 @@ function MyTasksContent() {
       setNewEstimatedEffort("");
       setNewAssigneeId("");
       setNewPhaseId("");
+      setNewReportedBy(currentUser?.id ?? "");
+      setSubtasks([]);
+      setSubtaskInput("");
+      setSelectedTagIds(new Set());
+      setNewComment("");
       setShowNewTask(false);
     } catch {
       setError("Failed to create task");
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId]);
+  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId, newReportedBy, subtasks, selectedTagIds, newComment, currentUser]);
 
   const handleStatusChange = useCallback(async (taskId: string, newStatus: string) => {
     setChangingStatusId(null);
@@ -384,6 +444,26 @@ function MyTasksContent() {
             </div>
           </div>
 
+          {/* Reported By */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Reported By</label>
+            <select
+              value={newReportedBy}
+              onChange={(e) => setNewReportedBy(e.target.value)}
+              className="w-full text-xs px-2 py-1.5 border rounded-md"
+            >
+              {Array.from(new Map(users.map((u) => [u.name, u])).values()).map((u) => (
+                <option
+                  key={u.id}
+                  value={u.id}
+                  className={u.id === currentUser?.id ? "bg-gray-200 font-medium" : ""}
+                >
+                  {u.name}{u.id === currentUser?.id ? " (You)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Row 2: Priority, Start Date, Due Date, Estimated Effort */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
@@ -439,6 +519,118 @@ function MyTasksContent() {
             </div>
           </div>
 
+          {/* Tags */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Tags</label>
+            {tags.length === 0 ? (
+              <p className="text-xs text-gray-400">No tags available. Create tags in Settings.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((tag) => {
+                  const isSelected = selectedTagIds.has(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTagIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(tag.id)) next.delete(tag.id);
+                          else next.add(tag.id);
+                          return next;
+                        });
+                      }}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                        isSelected
+                          ? "border-transparent text-white"
+                          : "border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}
+                      style={isSelected ? { backgroundColor: tag.color } : undefined}
+                    >
+                      {!isSelected && (
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                      )}
+                      {tag.name}
+                      {isSelected && (
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Subtasks */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks</label>
+            {subtasks.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {subtasks.map((st, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5 border">
+                    <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="flex-1 text-gray-700 truncate">{st}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={subtaskInput}
+                onChange={(e) => setSubtaskInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && subtaskInput.trim()) {
+                    e.preventDefault();
+                    setSubtasks((prev) => [...prev, subtaskInput.trim()]);
+                    setSubtaskInput("");
+                  }
+                }}
+                placeholder="Add a subtask and press Enter..."
+                className="flex-1 text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (subtaskInput.trim()) {
+                    setSubtasks((prev) => [...prev, subtaskInput.trim()]);
+                    setSubtaskInput("");
+                  }
+                }}
+                disabled={!subtaskInput.trim()}
+                className="px-2 py-1.5 text-xs text-gray-600 border rounded-md hover:bg-gray-50 disabled:opacity-50"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Comment Trail */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Comment Trail</label>
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Add an initial comment to this task..."
+              rows={3}
+              className="w-full text-xs px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 resize-none"
+            />
+            <p className="text-[10px] text-gray-400 mt-0.5">This will become the first comment on the task.</p>
+          </div>
+
           {/* Actions */}
           <div className="flex justify-end pt-1">
             <button
@@ -462,6 +654,7 @@ function MyTasksContent() {
       {viewMode === "kanban" && <KanbanView />}
       {viewMode === "calendar" && <CalendarView />}
       {viewMode === "table" && <TableView />}
+      {viewMode === "timeline" && <TimelineView />}
 
       {/* List view (original My Tasks content) */}
       {viewMode === "list" && (
