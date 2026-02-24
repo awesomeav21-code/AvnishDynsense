@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNull, sql, ne, inArray, asc, lt } from "drizzle-orm";
-import { tasks, projects, taskDependencies } from "@dynsense/db";
+import { tasks, projects, taskDependencies, users } from "@dynsense/db";
 import {
   createTaskSchema, updateTaskSchema,
   taskStatusTransitionSchema, taskFilterSchema,
@@ -200,7 +200,7 @@ export async function taskRoutes(app: FastifyInstance) {
     reply.status(201).send({ data: task });
   });
 
-  // GET /:id — get task by id
+  // GET /:id — get task by id with reporter name
   app.get("/:id", async (request) => {
     const { tenantId } = request.jwtPayload;
     const { id } = request.params as { id: string };
@@ -210,7 +210,17 @@ export async function taskRoutes(app: FastifyInstance) {
     });
 
     if (!task) throw AppError.notFound("Task not found");
-    return { data: task };
+
+    let reporterName: string | null = null;
+    if (task.reportedBy) {
+      const reporter = await db.query.users.findFirst({
+        where: eq(users.id, task.reportedBy),
+        columns: { name: true },
+      });
+      reporterName = reporter?.name ?? null;
+    }
+
+    return { data: { ...task, reporterName } };
   });
 
   // PATCH /:id — update task

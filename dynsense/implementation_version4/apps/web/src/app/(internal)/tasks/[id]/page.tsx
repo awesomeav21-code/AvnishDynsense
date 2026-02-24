@@ -17,14 +17,9 @@ interface Task {
   projectId: string;
   estimatedEffort: string | null;
   reportedBy: string | null;
+  reporterName: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-interface UserInfo {
-  id: string;
-  name: string;
-  email: string;
 }
 
 interface Comment {
@@ -65,7 +60,6 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
-  const [reporterName, setReporterName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newComment, setNewComment] = useState("");
@@ -74,20 +68,14 @@ export default function TaskDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [taskRes, commentsRes, checklistsRes, usersRes] = await Promise.all([
+        const [taskRes, commentsRes, checklistsRes] = await Promise.all([
           api.getTask(taskId),
           api.getComments(taskId).catch(() => ({ data: [] as Comment[] })),
           api.getChecklists(taskId).catch(() => ({ data: [] as Checklist[] })),
-          api.getUsers().catch(() => ({ data: [] as UserInfo[] })),
         ]);
-        const taskData = taskRes.data as Task;
-        setTask(taskData);
+        setTask(taskRes.data as Task);
         setComments(commentsRes.data as Comment[]);
         setChecklists(checklistsRes.data as Checklist[]);
-        if (taskData.reportedBy) {
-          const reporter = (usersRes.data as UserInfo[]).find((u) => u.id === taskData.reportedBy);
-          setReporterName(reporter?.name ?? null);
-        }
       } catch {
         setError("Failed to load task");
       } finally {
@@ -263,10 +251,10 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {reporterName && (
+            {task.reporterName && (
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Reported By</label>
-                <span className="text-xs">{reporterName}</span>
+                <span className="text-xs">{task.reporterName}</span>
               </div>
             )}
 

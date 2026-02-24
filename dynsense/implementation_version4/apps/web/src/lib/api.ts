@@ -145,7 +145,7 @@ class ApiClient {
   }
 
   getTask(id: string) {
-    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; reportedBy: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
+    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; reportedBy: string | null; reporterName: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
   }
 
   createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string }) {
