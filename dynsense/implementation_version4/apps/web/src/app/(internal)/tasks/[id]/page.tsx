@@ -251,13 +251,6 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {task.reporterName && (
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Reported By</label>
-                <span className="text-xs">{task.reporterName}</span>
-              </div>
-            )}
-
             <div>
               <label className="text-xs text-gray-500 block mb-1">Created</label>
               <span className="text-xs">{new Date(task.createdAt).toLocaleDateString()}</span>
@@ -266,6 +259,11 @@ export default function TaskDetailPage() {
             <div>
               <label className="text-xs text-gray-500 block mb-1">Updated</label>
               <span className="text-xs">{new Date(task.updatedAt).toLocaleDateString()}</span>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Reported By</label>
+              <span className="text-xs">{task.reporterName ?? "—"}</span>
             </div>
           </div>
         </div>

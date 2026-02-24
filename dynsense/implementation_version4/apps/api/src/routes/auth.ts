@@ -14,41 +14,39 @@ export async function authRoutes(app: FastifyInstance) {
   const env = app.env as Env;
   const db = getDb(env);
 
-  // Local register schema — tenantId is optional for testing
+  // Local register schema
   const localRegisterSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8).max(128),
     name: z.string().min(1).max(255),
-    tenantId: z.string().uuid().optional(),
+    workspaceName: z.string().min(1).max(100),
   });
 
   // POST /register
   app.post("/register", async (request, reply) => {
     const body = localRegisterSchema.parse(request.body);
 
-    // Resolve or auto-create tenant
-    let tenantId = body.tenantId;
-    if (tenantId) {
-      const tenant = await db.query.tenants.findFirst({
-        where: eq(tenants.id, tenantId),
-      });
-      if (!tenant) throw AppError.badRequest("Tenant not found");
-    } else {
-      // Auto-create a default tenant for testing
-      const existing = await db.query.tenants.findFirst({
-        where: eq(tenants.slug, "default"),
-      });
-      if (existing) {
-        tenantId = existing.id;
-      } else {
-        const [created] = await db.insert(tenants).values({
-          name: "Default Tenant",
-          slug: "default",
-          planTier: "starter",
-        }).returning();
-        tenantId = created!.id;
-      }
-    }
+    // Generate slug from workspace name
+    const slug = body.workspaceName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    if (!slug) throw AppError.badRequest("Invalid workspace name");
+
+    // Check if workspace slug already exists
+    const existingTenant = await db.query.tenants.findFirst({
+      where: eq(tenants.slug, slug),
+    });
+    if (existingTenant) throw AppError.conflict("Workspace name is already taken");
+
+    // Create the workspace
+    const [created] = await db.insert(tenants).values({
+      name: body.workspaceName,
+      slug,
+      planTier: "starter",
+    }).returning();
+    const tenantId = created!.id;
 
     // Check duplicate email within tenant
     const existing = await db.query.users.findFirst({
@@ -91,11 +89,22 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/login", async (request, reply) => {
     const body = loginSchema.parse(request.body);
 
-    // Find user across all tenants (login doesn't require tenantId)
-    const user = await db.query.users.findFirst({
-      where: eq(users.email, body.email),
+    // Resolve workspace slug to tenant
+    const slug = body.workspace
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    const tenant = await db.query.tenants.findFirst({
+      where: eq(tenants.slug, slug),
     });
-    if (!user) throw AppError.unauthorized("Invalid email or password");
+    if (!tenant) throw AppError.unauthorized("Invalid workspace, email, or password");
+
+    // Find user within the specified workspace
+    const user = await db.query.users.findFirst({
+      where: and(eq(users.tenantId, tenant.id), eq(users.email, body.email)),
+    });
+    if (!user) throw AppError.unauthorized("Invalid workspace, email, or password");
 
     const validPassword = await bcrypt.compare(body.password, user.passwordHash);
     if (!validPassword) throw AppError.unauthorized("Invalid email or password");

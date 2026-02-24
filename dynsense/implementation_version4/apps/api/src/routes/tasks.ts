@@ -185,7 +185,7 @@ export async function taskRoutes(app: FastifyInstance) {
       startDate: body.startDate ? new Date(body.startDate) : undefined,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       estimatedEffort: body.estimatedEffort?.toString(),
-      reportedBy: request.jwtPayload.sub,
+      reportedBy: body.reportedBy ?? request.jwtPayload.sub,
     }).returning();
 
     await writeAuditLog(db, {

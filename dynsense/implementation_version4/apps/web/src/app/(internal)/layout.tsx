@@ -10,7 +10,6 @@ const mainNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: "grid" },
   { label: "Projects", href: "/projects", icon: "folder" },
   { label: "My Tasks", href: "/my-tasks", icon: "check-square" },
-  { label: "Timeline", href: "/timeline", icon: "calendar" },
   { label: "Dependencies", href: "/dependencies", icon: "plug" },
   { label: "Portfolio", href: "/portfolio", icon: "grid" },
   { label: "AI Review", href: "/ai-review", icon: "ai" },

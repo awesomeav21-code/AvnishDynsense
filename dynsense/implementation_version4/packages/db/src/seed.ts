@@ -87,7 +87,7 @@ async function seed() {
   }
 
   // Re-fetch all users after updates
-  const allUsers = await db.select().from(users).where(eq(users.tenantId, tid));
+  const allUsers = await db.select().from(users).where(eq(users.tenantId, tid)).orderBy(asc(users.createdAt));
 
   console.log(`  ${allUsers.length} users ready`);
 
@@ -225,28 +225,44 @@ async function seed() {
       }
     }
 
-    // --- Dependencies ---
-    if (insertedTasks.length >= 14) {
-      await db.insert(taskDependencies).values([
-        {
-          tenantId: tid,
-          blockerTaskId: insertedTasks[4]!.id,
-          blockedTaskId: insertedTasks[9]!.id,
-          type: "blocks",
-        },
-        {
-          tenantId: tid,
-          blockerTaskId: insertedTasks[9]!.id,
-          blockedTaskId: insertedTasks[12]!.id,
-          type: "blocks",
-        },
-        {
-          tenantId: tid,
-          blockerTaskId: insertedTasks[5]!.id,
-          blockedTaskId: insertedTasks[10]!.id,
-          type: "blocks",
-        },
-      ]);
+    // --- Dependencies (project-specific, fit each project's task count) ---
+    const depsByProject: Record<string, Array<[number, number]>> = {
+      "Platform Rebuild": [
+        [0, 4],   // monorepo setup → JWT auth
+        [1, 5],   // DB schema → Fastify API routes
+        [4, 11],  // JWT auth → Vitest tests
+        [5, 12],  // API routes → integration tests
+        [8, 16],  // GitHub Actions CI → deploy staging
+        [16, 17], // deploy staging → production cutover
+        [6, 7],   // full-text search → S3 upload
+      ],
+      "Mobile App": [
+        [0, 2],  // init project → biometric login
+        [1, 3],  // UI library → task list
+        [2, 5],  // biometric login → offline queue
+        [4, 8],  // push notifications → Detox tests
+        [9, 10], // compliance review → app store release
+      ],
+      "Data Migration": [
+        [0, 2],  // audit Oracle → ETL pipeline
+        [1, 3],  // column mapping → cleansing scripts
+        [2, 4],  // ETL pipeline → incremental sync
+        [3, 5],  // cleansing → validate data
+        [5, 7],  // validate → client sign-off
+        [7, 8],  // client sign-off → production migration
+      ],
+    };
+    const projectDepDefs = depsByProject[project.name] ?? [];
+    const depValues = projectDepDefs
+      .filter(([a, b]) => a < insertedTasks.length && b < insertedTasks.length)
+      .map(([a, b]) => ({
+        tenantId: tid,
+        blockerTaskId: insertedTasks[a]!.id,
+        blockedTaskId: insertedTasks[b]!.id,
+        type: "blocks" as const,
+      }));
+    if (depValues.length > 0) {
+      await db.insert(taskDependencies).values(depValues);
     }
 
     // --- Comments on first 7 tasks ---

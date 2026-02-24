@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const registered = searchParams.get("registered") === "true";
+  const [workspace, setWorkspace] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,7 +20,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await api.login(email, password);
+      const res = await api.login(email, password, workspace);
       api.setTokens(res.accessToken, res.refreshToken);
       router.push("/dashboard");
     } catch (err) {
@@ -42,11 +45,31 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {registered && (
+            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+              Account created successfully. Please sign in.
+            </div>
+          )}
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
               {error}
             </div>
           )}
+
+          <div>
+            <label htmlFor="workspace" className="block text-xs font-medium text-gray-700 mb-1">
+              Workspace Name
+            </label>
+            <input
+              id="workspace"
+              type="text"
+              required
+              value={workspace}
+              onChange={(e) => setWorkspace(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
+              placeholder="My Company"
+            />
+          </div>
 
           <div>
             <label htmlFor="email" className="block text-xs font-medium text-gray-700 mb-1">

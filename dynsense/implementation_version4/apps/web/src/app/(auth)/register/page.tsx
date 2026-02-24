@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [workspaceName, setWorkspaceName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,9 +19,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await api.register({ email, password, name });
-      api.setTokens(res.accessToken, res.refreshToken);
-      router.push("/dashboard");
+      await api.register({ email, password, name, workspaceName });
+      router.push("/login?registered=true");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -48,6 +48,21 @@ export default function RegisterPage() {
               {error}
             </div>
           )}
+
+          <div>
+            <label htmlFor="workspaceName" className="block text-xs font-medium text-gray-700 mb-1">
+              Workspace Name
+            </label>
+            <input
+              id="workspaceName"
+              type="text"
+              required
+              value={workspaceName}
+              onChange={(e) => setWorkspaceName(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
+              placeholder="My Company"
+            />
+          </div>
 
           <div>
             <label htmlFor="name" className="block text-xs font-medium text-gray-700 mb-1">

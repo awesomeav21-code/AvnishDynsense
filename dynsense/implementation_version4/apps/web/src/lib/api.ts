@@ -75,18 +75,18 @@ class ApiClient {
   }
 
   // Auth
-  login(email: string, password: string) {
+  login(email: string, password: string, workspace: string) {
     return this.request<{
       accessToken: string;
       refreshToken: string;
       user: { id: string; email: string; name: string; role: string; tenantId: string };
     }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, workspace }),
     });
   }
 
-  register(data: { email: string; password: string; name: string; tenantId?: string }) {
+  register(data: { email: string; password: string; name: string; workspaceName: string }) {
     return this.request<{
       accessToken: string;
       refreshToken: string;
@@ -148,7 +148,7 @@ class ApiClient {
     return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; reportedBy: string | null; reporterName: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
   }
 
-  createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string }) {
+  createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string; parentTaskId?: string; reportedBy?: string }) {
     return this.request<{ data: { id: string; title: string } }>("/tasks", {
       method: "POST",
       body: JSON.stringify(data),
