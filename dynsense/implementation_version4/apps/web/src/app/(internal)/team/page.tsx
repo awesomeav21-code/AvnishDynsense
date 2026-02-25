@@ -28,7 +28,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 function permissionError(userRole: string, action: string): string {
-  const label = ROLE_LABEL[userRole] ?? userRole;
+  const label = ROLE_LABEL[userRole] || userRole || "non-admin user";
   return `You are logged in as a ${label}. Only Admins and PMs can ${action}.`;
 }
 
@@ -51,17 +51,15 @@ export default function TeamPage() {
 
   useEffect(() => {
     async function load() {
-      try {
-        const res = await api.getUsers();
-        setUsers(res.data);
-      } catch {
-        setError("Failed to load team members");
-      }
-      try {
-        const meRes = await api.getMe();
-        setUserRole(meRes.role);
-      } catch {
-        /* ignore */
+      const [usersRes, meRes] = await Promise.all([
+        api.getUsers().catch(() => null),
+        api.getMe().catch(() => null),
+      ]);
+      if (meRes) setUserRole(meRes.role);
+      if (usersRes) {
+        setUsers(usersRes.data);
+      } else {
+        setError(meRes ? permissionError(meRes.role, "view team members") : "Failed to load team members");
       }
       setLoading(false);
     }

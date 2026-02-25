@@ -246,21 +246,31 @@ async function seed() {
     const taskDefs = taskDefsByProject[project.name] ?? taskDefsByProject["Platform Rebuild"]!;
 
     const insertedTasks = await db.insert(tasks).values(
-      taskDefs.map((t, i) => ({
-        tenantId: tid,
-        projectId: project.id,
-        phaseId: insertedPhases[t.phase]!.id,
-        title: t.title,
-        description: `${t.title} for ${project.name}. This task covers all relevant subtasks and deliverables.`,
-        status: t.status,
-        priority: t.priority,
-        assigneeId: allUsers[i % allUsers.length]!.id,
-        reportedBy: allUsers[(i + 1) % allUsers.length]!.id,
-        position: i,
-        estimatedEffort: t.effort,
-        dueDate: new Date(Date.now() + (i - (3 + insertedProjects.indexOf(project) * 2)) * 86400000 * 2),
-        completedAt: t.status === "completed" ? new Date(Date.now() - (10 - i) * 86400000) : null,
-      }))
+      taskDefs.map((t, i) => {
+        // Spread task creation across the past 7 days so the dashboard chart is populated
+        const daysAgo = i % 7;
+        const createdAt = new Date(Date.now() - daysAgo * 86400000 + i * 3600000);
+        const completedAt = t.status === "completed"
+          ? new Date(createdAt.getTime() + (1 + (i % 3)) * 86400000)
+          : null;
+
+        return {
+          tenantId: tid,
+          projectId: project.id,
+          phaseId: insertedPhases[t.phase]!.id,
+          title: t.title,
+          description: `${t.title} for ${project.name}. This task covers all relevant subtasks and deliverables.`,
+          status: t.status,
+          priority: t.priority,
+          assigneeId: allUsers[i % allUsers.length]!.id,
+          reportedBy: allUsers[(i + 1) % allUsers.length]!.id,
+          position: i,
+          estimatedEffort: t.effort,
+          createdAt,
+          dueDate: new Date(Date.now() + (i - (3 + insertedProjects.indexOf(project) * 2)) * 86400000 * 2),
+          completedAt,
+        };
+      })
     ).returning();
 
     allTasks.push(...insertedTasks.map((t) => ({ id: t.id, projectId: project.id, title: t.title })));

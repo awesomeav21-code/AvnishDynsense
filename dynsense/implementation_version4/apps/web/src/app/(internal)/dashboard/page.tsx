@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
 
 interface Project {
@@ -29,18 +29,6 @@ interface WhatsNextTask {
   dueDate: string | null;
   projectId: string;
   reason: string;
-}
-
-interface AiAction {
-  id: string;
-  capability: string;
-  status: string;
-  disposition: string;
-  output: unknown;
-  confidence: string | null;
-  input: unknown;
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface FullTask {
@@ -90,29 +78,22 @@ export default function DashboardPage() {
   const [taskStats, setTaskStats] = useState<TaskStat[]>([]);
   const [allTasks, setAllTasks] = useState<FullTask[]>([]);
   const [whatsNext, setWhatsNext] = useState<WhatsNextTask[]>([]);
-  const [aiSummary, setAiSummary] = useState<AiAction | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [generatingSummary, setGeneratingSummary] = useState(false);
-  const [summaryError, setSummaryError] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const [projRes, statsRes, tasksRes, whatsNextRes, aiRes] = await Promise.all([
+        const [projRes, statsRes, tasksRes, whatsNextRes] = await Promise.all([
           api.getProjects(),
           api.getTaskStats(),
           api.getTasks({ limit: 500 }),
           api.getWhatsNext().catch(() => ({ data: [] as WhatsNextTask[] })),
-          api.getAiActions({ capability: "summary_writer", limit: 1 }).catch(() => ({ data: [] as AiAction[] })),
         ]);
         setProjects(projRes.data);
         setTaskStats(statsRes.data);
         setAllTasks(tasksRes.data as unknown as FullTask[]);
         setWhatsNext(whatsNextRes.data);
-        if (aiRes.data.length > 0) {
-          setAiSummary(aiRes.data[0]!);
-        }
       } catch {
         setError("Failed to load dashboard data");
       } finally {
@@ -120,23 +101,6 @@ export default function DashboardPage() {
       }
     }
     load();
-  }, []);
-
-  const handleGenerateSummary = useCallback(async () => {
-    setGeneratingSummary(true);
-    setSummaryError("");
-    try {
-      const result = await api.executeAi("summary_writer", {});
-      setAiSummary({
-        ...result.data,
-        input: {},
-        updatedAt: result.data.createdAt,
-      });
-    } catch {
-      setSummaryError("Failed to generate summary");
-    } finally {
-      setGeneratingSummary(false);
-    }
   }, []);
 
   const totalTasks = taskStats.reduce((sum, s) => sum + s.count, 0);
@@ -166,14 +130,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const summaryText = aiSummary?.output
-    ? typeof aiSummary.output === "string"
-      ? aiSummary.output
-      : typeof aiSummary.output === "object" && aiSummary.output !== null && "summary" in (aiSummary.output as Record<string, unknown>)
-        ? String((aiSummary.output as Record<string, unknown>).summary)
-        : JSON.stringify(aiSummary.output)
-    : null;
 
   return (
     <div className="space-y-6">
@@ -213,9 +169,9 @@ export default function DashboardPage() {
           color: PRIORITY_CHART_COLORS[priority] ?? "#9CA3AF",
         }));
 
-        // Line chart: tasks created per day over the last 14 days
+        // Bar chart: tasks created per day over the last 7 days
         const dayMs = 86400000;
-        const days = 14;
+        const days = 7;
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const lineData: Array<{ date: string; created: number; completed: number }> = [];
         for (let i = days - 1; i >= 0; i--) {
@@ -298,17 +254,16 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* Activity line chart */}
+            {/* Activity bar chart */}
             <div className="bg-white rounded-lg border p-4">
-              <h3 className="text-xs font-semibold text-gray-500 mb-2">Activity (Last 14 Days)</h3>
+              <h3 className="text-xs font-semibold text-gray-500 mb-2">Activity (Last 7 Days)</h3>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={lineData}>
+                <BarChart data={lineData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                   <XAxis
                     dataKey="date"
                     tick={{ fontSize: 10 }}
                     tickLine={false}
-                    interval="preserveStartEnd"
                   />
                   <YAxis
                     tick={{ fontSize: 10 }}
@@ -317,24 +272,10 @@ export default function DashboardPage() {
                     width={30}
                   />
                   <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
-                  <Line
-                    type="monotone"
-                    dataKey="created"
-                    stroke="#6366F1"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    name="Created"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="completed"
-                    stroke="#22C55E"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    name="Completed"
-                  />
+                  <Bar dataKey="created" fill="#6366F1" radius={[3, 3, 0, 0]} name="Created" />
+                  <Bar dataKey="completed" fill="#22C55E" radius={[3, 3, 0, 0]} name="Completed" />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: "10px" }} />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -378,44 +319,6 @@ export default function DashboardPage() {
             })}
           </div>
         )}
-      </div>
-
-      {/* AI Summary card */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">AI Summary</h2>
-        <div className="bg-white rounded-lg border p-4">
-          {summaryText ? (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{summaryText}</p>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">
-                  Generated {aiSummary ? new Date(aiSummary.createdAt).toLocaleString() : ""}
-                </span>
-                <button
-                  onClick={handleGenerateSummary}
-                  disabled={generatingSummary}
-                  className="text-xs px-3 py-1.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {generatingSummary ? "Generating..." : "Regenerate Summary"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center space-y-3 py-2">
-              <p className="text-sm text-gray-500">No AI summary available yet.</p>
-              <button
-                onClick={handleGenerateSummary}
-                disabled={generatingSummary}
-                className="text-xs px-4 py-2 rounded bg-ai text-white hover:bg-ai/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {generatingSummary ? "Generating..." : "Generate Summary"}
-              </button>
-            </div>
-          )}
-          {summaryError && (
-            <p className="text-xs text-red-600 mt-2">{summaryError}</p>
-          )}
-        </div>
       </div>
 
       {/* Projects list */}
