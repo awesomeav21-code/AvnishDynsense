@@ -121,6 +121,7 @@ export default function TeamPage() {
     }
   }, []);
 
+  const canManage = userRole === "site_admin" || userRole === "pm";
   const activeUsers = users.filter((u) => u.status !== "deactivated");
   const deactivatedUsers = users.filter((u) => u.status === "deactivated");
 
@@ -139,12 +140,14 @@ export default function TeamPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Team</h1>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
-        >
-          + Invite Member
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setShowInvite(true)}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
+          >
+            + Invite Member
+          </button>
+        )}
       </div>
 
       {error && (
@@ -236,8 +239,8 @@ export default function TeamPage() {
                   <div className="text-xs text-gray-500">{user.email}</div>
                 </div>
 
-                {/* Role — click to edit */}
-                {editingRoleId === user.id ? (
+                {/* Role — click to edit (managers only) */}
+                {canManage && editingRoleId === user.id ? (
                   <select
                     autoFocus
                     value={user.role}
@@ -250,12 +253,12 @@ export default function TeamPage() {
                     ))}
                   </select>
                 ) : (
-                  <button
-                    onClick={() => setEditingRoleId(user.id)}
-                    className={`text-xs px-2 py-0.5 rounded-full capitalize cursor-pointer hover:ring-2 hover:ring-ai/30 transition-all ${roleColors[user.role] ?? "bg-gray-100 text-gray-600"}`}
+                  <span
+                    onClick={canManage ? () => setEditingRoleId(user.id) : undefined}
+                    className={`text-xs px-2 py-0.5 rounded-full capitalize ${canManage ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} transition-all ${roleColors[user.role] ?? "bg-gray-100 text-gray-600"}`}
                   >
                     {user.role.replace("_", " ")}
-                  </button>
+                  </span>
                 )}
 
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -265,12 +268,14 @@ export default function TeamPage() {
                   {user.status}
                 </span>
 
-                <button
-                  onClick={() => handleRemove(user.id, user.name)}
-                  className="text-xs text-red-500 hover:text-red-700 px-2 py-1 transition-colors"
-                >
-                  Remove
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => handleRemove(user.id, user.name)}
+                    className="text-xs text-red-500 hover:text-red-700 px-2 py-1 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             );
           })}
