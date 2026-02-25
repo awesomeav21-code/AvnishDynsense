@@ -38,13 +38,20 @@ export function KanbanView() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTargetCol, setDropTargetCol] = useState<string | null>(null);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    api.getTasks({ limit: 500 })
-      .then((res) => setTasks(res.data))
-      .catch(() => setError("Failed to load tasks"))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.getTasks({ limit: 500 }).catch(() => null),
+      api.getMe().catch(() => null),
+    ]).then(([tasksRes, meRes]) => {
+      if (tasksRes) setTasks(tasksRes.data);
+      else setError("Failed to load tasks");
+      if (meRes) setUserRole(meRes.role);
+    }).finally(() => setLoading(false));
   }, []);
+
+  const canTransition = userRole === "site_admin" || userRole === "pm" || userRole === "developer";
 
   const tasksByStatus = COLUMNS.reduce<Record<string, Task[]>>((acc, col) => {
     acc[col.key] = tasks.filter((t) => t.status === col.key);
@@ -126,7 +133,7 @@ export function KanbanView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">{tasks.length} tasks total — drag cards to change status</span>
+        <span className="text-xs text-gray-400">{tasks.length} tasks total{canTransition ? " — drag cards to change status" : ""}</span>
       </div>
 
       {error && (
@@ -149,9 +156,9 @@ export function KanbanView() {
             <div
               key={col.key}
               className="w-64 flex-shrink-0"
-              onDragOver={(e) => handleDragOver(e, col.key)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, col.key)}
+              onDragOver={canTransition ? (e) => handleDragOver(e, col.key) : undefined}
+              onDragLeave={canTransition ? handleDragLeave : undefined}
+              onDrop={canTransition ? (e) => handleDrop(e, col.key) : undefined}
             >
               <div className={`rounded-t-lg border-t-2 px-3 py-2 ${col.color}`}>
                 <div className="flex items-center justify-between">
@@ -179,10 +186,10 @@ export function KanbanView() {
                     return (
                       <div
                         key={task.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, task.id)}
-                        onDragEnd={handleDragEnd}
-                        className={`bg-white rounded-lg border shadow-sm p-3 cursor-grab active:cursor-grabbing transition-all ${
+                        draggable={canTransition}
+                        onDragStart={canTransition ? (e) => handleDragStart(e, task.id) : undefined}
+                        onDragEnd={canTransition ? handleDragEnd : undefined}
+                        className={`bg-white rounded-lg border shadow-sm p-3 ${canTransition ? "cursor-grab active:cursor-grabbing" : ""} transition-all ${
                           isDragging ? "opacity-50 scale-95" : "hover:shadow-md"
                         } ${isUpdating ? "ring-2 ring-blue-400 animate-pulse" : ""}`}
                       >

@@ -23,6 +23,8 @@ const PASSWORD_HASHES: Record<string, string> = {
   "Carol!Dev7": "$2b$12$Nu9hHF8mGVbxEdB7qpTXc.bXhcoXRSPJ3Fy8oQIrG0G3yhMA/YCQm",
   "DaveK!m89": "$2b$12$CbbWf5et.DVb4./OI2Vjx.RGnnDuZ5.FJcXEEIO3noOI983cdIkwm",
   "EveW!ll01": "$2b$12$CNGq04sBVRCbwFnubRZ9L.RCrBjAfxmI2MIIlbvNkg7MKCa7I6XVO",
+  "Frank@Cl1": "$2b$12$xWsUEdFGDks2cqTToPA6OerWjty/34J37bDd5b2mKG5oPHxcjh.ia",
+  "Grace#Cl2": "$2b$12$caD.1oTyakRttQ6sKYD7Bu5uXcOHNb0BCofdNBJlndaXSVB.C6k06",
 };
 
 async function seed() {
@@ -82,6 +84,8 @@ async function seed() {
     { email: "carol@demo.com", name: "Carol Johnson", role: "developer", uid: "DS-CAROL1", password: "Carol!Dev7" },
     { email: "dave@demo.com", name: "Dave Kim", role: "developer", uid: "DS-DAVE01", password: "DaveK!m89" },
     { email: "eve@demo.com", name: "Eve Williams", role: "developer", uid: "DS-EVE001", password: "EveW!ll01" },
+    { email: "frank@demo.com", name: "Frank Lee", role: "client", uid: "DS-FRANK", password: "Frank@Cl1" },
+    { email: "grace@demo.com", name: "Grace Patel", role: "client", uid: "DS-GRACE", password: "Grace#Cl2" },
   ];
 
   const existingUsers = await db.select().from(users).where(eq(users.tenantId, tid)).orderBy(asc(users.createdAt));

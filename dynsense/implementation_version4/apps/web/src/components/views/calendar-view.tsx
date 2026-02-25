@@ -82,6 +82,7 @@ export function CalendarView() {
 
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -90,17 +91,21 @@ export function CalendarView() {
     Promise.all([
       api.getTasks({ limit: 500 }),
       api.getProjects(),
+      api.getMe().catch(() => null),
     ])
-      .then(([tasksRes, projectsRes]) => {
+      .then(([tasksRes, projectsRes, meRes]) => {
         setTasks(tasksRes.data);
         setProjects(projectsRes.data);
         if (projectsRes.data.length > 0) {
           setQuickProjectId(projectsRes.data[0]!.id);
         }
+        if (meRes) setUserRole(meRes.role);
       })
       .catch(() => setError("Failed to load data"))
       .finally(() => setLoading(false));
   }, []);
+
+  const canEdit = userRole === "site_admin" || userRole === "pm" || userRole === "developer";
 
   const tasksByDate = useMemo(() => {
     const map: Record<string, Task[]> = {};
@@ -280,10 +285,10 @@ export function CalendarView() {
               return (
                 <div
                   key={cell.key}
-                  onClick={() => cell.day !== null && handleCellClick(cell.key)}
-                  onDragOver={(e) => { if (cell.day !== null) { e.preventDefault(); setDropTargetKey(cell.key); } }}
-                  onDragLeave={() => setDropTargetKey(null)}
-                  onDrop={(e) => { e.preventDefault(); if (cell.day !== null) handleDrop(cell.key); }}
+                  onClick={() => canEdit && cell.day !== null && handleCellClick(cell.key)}
+                  onDragOver={canEdit ? (e) => { if (cell.day !== null) { e.preventDefault(); setDropTargetKey(cell.key); } } : undefined}
+                  onDragLeave={canEdit ? () => setDropTargetKey(null) : undefined}
+                  onDrop={canEdit ? (e) => { e.preventDefault(); if (cell.day !== null) handleDrop(cell.key); } : undefined}
                   className={`min-h-[100px] border-b border-r p-1.5 cursor-pointer transition-colors ${
                     cell.day === null ? "bg-gray-50 cursor-default" : "bg-white hover:bg-blue-50/30"
                   } ${isToday ? "ring-2 ring-inset ring-ai/30" : ""} ${isQuickCreate ? "bg-blue-50" : ""} ${dropTargetKey === cell.key ? "bg-ai/10 ring-2 ring-inset ring-ai/40" : ""}`}
@@ -334,9 +339,9 @@ export function CalendarView() {
                           <Link
                             key={task.id}
                             href={`/tasks/${task.id}`}
-                            draggable
-                            onDragStart={(e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; }}
-                            onDragEnd={() => { setDragTaskId(null); setDropTargetKey(null); }}
+                            draggable={canEdit}
+                            onDragStart={canEdit ? (e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
+                            onDragEnd={canEdit ? () => { setDragTaskId(null); setDropTargetKey(null); } : undefined}
                             className={`flex items-center gap-1 group ${dragTaskId === task.id ? "opacity-40" : ""}`}
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -369,10 +374,10 @@ export function CalendarView() {
               return (
                 <div
                   key={key}
-                  onClick={() => handleCellClick(key)}
-                  onDragOver={(e) => { e.preventDefault(); setDropTargetKey(key); }}
-                  onDragLeave={() => setDropTargetKey(null)}
-                  onDrop={(e) => { e.preventDefault(); handleDrop(key); }}
+                  onClick={() => canEdit && handleCellClick(key)}
+                  onDragOver={canEdit ? (e) => { e.preventDefault(); setDropTargetKey(key); } : undefined}
+                  onDragLeave={canEdit ? () => setDropTargetKey(null) : undefined}
+                  onDrop={canEdit ? (e) => { e.preventDefault(); handleDrop(key); } : undefined}
                   className={`min-h-[300px] border-r p-2 cursor-pointer transition-colors ${
                     isToday ? "ring-2 ring-inset ring-ai/30 bg-ai/5" : "bg-white hover:bg-blue-50/30"
                   } ${isQuickCreate ? "bg-blue-50" : ""} ${dropTargetKey === key ? "bg-ai/10 ring-2 ring-inset ring-ai/40" : ""}`}
@@ -421,9 +426,9 @@ export function CalendarView() {
                       <Link
                         key={task.id}
                         href={`/tasks/${task.id}`}
-                        draggable
-                        onDragStart={(e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; }}
-                        onDragEnd={() => { setDragTaskId(null); setDropTargetKey(null); }}
+                        draggable={canEdit}
+                        onDragStart={canEdit ? (e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
+                        onDragEnd={canEdit ? () => { setDragTaskId(null); setDropTargetKey(null); } : undefined}
                         onClick={(e) => e.stopPropagation()}
                         className={`block px-1.5 py-1 rounded text-[10px] border transition-colors hover:border-ai/50 ${
                           task.status === "completed"
@@ -455,7 +460,7 @@ export function CalendarView() {
             </span>
           ))}
         </div>
-        <span className="text-xs text-gray-400">Click a day to quick-create &middot; Drag tasks to reschedule</span>
+        <span className="text-xs text-gray-400">{canEdit ? "Click a day to quick-create \u00b7 Drag tasks to reschedule" : ""}</span>
       </div>
     </div>
   );

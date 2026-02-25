@@ -59,19 +59,24 @@ export function TableView() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
     Promise.all([
       api.getTasks({ limit: 500 }),
       api.getUsers(),
+      api.getMe().catch(() => null),
     ])
-      .then(([tasksRes, usersRes]) => {
+      .then(([tasksRes, usersRes, meRes]) => {
         setTasks(tasksRes.data);
         setUsers(usersRes.data);
+        if (meRes) setUserRole(meRes.role);
       })
       .catch(() => setError("Failed to load data"))
       .finally(() => setLoading(false));
   }, []);
+
+  const canEdit = userRole === "site_admin" || userRole === "pm" || userRole === "developer";
 
   const userMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -232,7 +237,7 @@ export function TableView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">{tasks.length} tasks &middot; Click cells to edit</span>
+        <span className="text-xs text-gray-400">{tasks.length} tasks{canEdit ? " \u00b7 Click cells to edit" : ""}</span>
         <button
           onClick={handleExportCsv}
           disabled={tasks.length === 0}
@@ -294,14 +299,16 @@ export function TableView() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-gray-50 border-b">
-                <th className="px-3 py-2.5 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === sorted.length && sorted.length > 0}
-                    onChange={toggleSelectAll}
-                    className="rounded border-gray-300"
-                  />
-                </th>
+                {canEdit && (
+                  <th className="px-3 py-2.5 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === sorted.length && sorted.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300"
+                    />
+                  </th>
+                )}
                 <th className="text-left px-4 py-2.5 font-semibold text-gray-600 cursor-pointer hover:text-gray-900 select-none" onClick={() => handleSort("title")}>
                   Title <SortIcon field="title" />
                 </th>
@@ -324,14 +331,16 @@ export function TableView() {
                 const isSaving = savingIds.has(task.id);
                 return (
                   <tr key={task.id} className={`transition-colors ${isSaving ? "opacity-60" : "hover:bg-gray-50"} ${selectedIds.has(task.id) ? "bg-ai/5" : ""}`}>
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(task.id)}
-                        onChange={() => toggleSelect(task.id)}
-                        className="rounded border-gray-300"
-                      />
-                    </td>
+                    {canEdit && (
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(task.id)}
+                          onChange={() => toggleSelect(task.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-2.5">
                       <Link href={`/tasks/${task.id}`} className="text-gray-900 font-medium hover:text-ai transition-colors">
                         {task.title}
@@ -339,7 +348,7 @@ export function TableView() {
                     </td>
 
                     <td className="px-4 py-2.5">
-                      {editingCell?.taskId === task.id && editingCell.field === "status" ? (
+                      {canEdit && editingCell?.taskId === task.id && editingCell.field === "status" ? (
                         <select
                           autoFocus
                           value={task.status}
@@ -352,17 +361,17 @@ export function TableView() {
                           ))}
                         </select>
                       ) : (
-                        <button
-                          onClick={() => setEditingCell({ taskId: task.id, field: "status" })}
-                          className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap cursor-pointer hover:ring-2 hover:ring-ai/30 transition-all ${statusColors[task.status] ?? ""}`}
+                        <span
+                          onClick={canEdit ? () => setEditingCell({ taskId: task.id, field: "status" }) : undefined}
+                          className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${canEdit ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} transition-all ${statusColors[task.status] ?? ""}`}
                         >
                           {task.status.replace("_", " ")}
-                        </button>
+                        </span>
                       )}
                     </td>
 
                     <td className="px-4 py-2.5">
-                      {editingCell?.taskId === task.id && editingCell.field === "priority" ? (
+                      {canEdit && editingCell?.taskId === task.id && editingCell.field === "priority" ? (
                         <select
                           autoFocus
                           value={task.priority}
@@ -375,17 +384,17 @@ export function TableView() {
                           ))}
                         </select>
                       ) : (
-                        <button
-                          onClick={() => setEditingCell({ taskId: task.id, field: "priority" })}
-                          className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap capitalize cursor-pointer hover:ring-2 hover:ring-ai/30 transition-all ${priorityColors[task.priority] ?? ""}`}
+                        <span
+                          onClick={canEdit ? () => setEditingCell({ taskId: task.id, field: "priority" }) : undefined}
+                          className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap capitalize ${canEdit ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} transition-all ${priorityColors[task.priority] ?? ""}`}
                         >
                           {task.priority}
-                        </button>
+                        </span>
                       )}
                     </td>
 
                     <td className="px-4 py-2.5">
-                      {editingCell?.taskId === task.id && editingCell.field === "dueDate" ? (
+                      {canEdit && editingCell?.taskId === task.id && editingCell.field === "dueDate" ? (
                         <input
                           type="date"
                           autoFocus
@@ -395,9 +404,8 @@ export function TableView() {
                           className="text-[10px] px-1 py-0.5 border rounded w-full"
                         />
                       ) : (
-                        <button
-                          onClick={() => setEditingCell({ taskId: task.id, field: "dueDate" })}
-                          className="cursor-pointer hover:ring-2 hover:ring-ai/30 rounded px-1 py-0.5 transition-all"
+                        <span className={`${canEdit ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} rounded px-1 py-0.5 transition-all`}
+                          onClick={canEdit ? () => setEditingCell({ taskId: task.id, field: "dueDate" }) : undefined}
                         >
                           {task.dueDate ? (
                             <span className={
@@ -409,12 +417,12 @@ export function TableView() {
                           ) : (
                             <span className="text-gray-300">&mdash;</span>
                           )}
-                        </button>
+                        </span>
                       )}
                     </td>
 
                     <td className="px-4 py-2.5">
-                      {editingCell?.taskId === task.id && editingCell.field === "assignee" ? (
+                      {canEdit && editingCell?.taskId === task.id && editingCell.field === "assignee" ? (
                         <select
                           autoFocus
                           value={task.assigneeId ?? ""}
@@ -428,16 +436,16 @@ export function TableView() {
                           ))}
                         </select>
                       ) : (
-                        <button
-                          onClick={() => setEditingCell({ taskId: task.id, field: "assignee" })}
-                          className="cursor-pointer hover:ring-2 hover:ring-ai/30 rounded px-1 py-0.5 transition-all"
+                        <span
+                          onClick={canEdit ? () => setEditingCell({ taskId: task.id, field: "assignee" }) : undefined}
+                          className={`${canEdit ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} rounded px-1 py-0.5 transition-all`}
                         >
                           {task.assigneeId ? (
                             <span className="text-gray-700">{userMap[task.assigneeId] ?? "Unknown"}</span>
                           ) : (
                             <span className="text-gray-300">Unassigned</span>
                           )}
-                        </button>
+                        </span>
                       )}
                     </td>
                   </tr>

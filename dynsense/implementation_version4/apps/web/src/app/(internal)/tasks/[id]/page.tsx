@@ -65,20 +65,23 @@ export default function TaskDetailPage() {
   const [error, setError] = useState("");
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
     async function load() {
       try {
-        const [taskRes, commentsRes, checklistsRes, usersRes] = await Promise.all([
+        const [taskRes, commentsRes, checklistsRes, usersRes, meRes] = await Promise.all([
           api.getTask(taskId),
           api.getComments(taskId).catch(() => ({ data: [] as Comment[] })),
           api.getChecklists(taskId).catch(() => ({ data: [] as Checklist[] })),
           api.getUsers().catch(() => ({ data: [] as Array<{ id: string; name: string }> })),
+          api.getMe().catch(() => null),
         ]);
         const t = taskRes.data as Task;
         setTask(t);
         setComments(commentsRes.data as Comment[]);
         setChecklists(checklistsRes.data as Checklist[]);
+        if (meRes) setUserRole(meRes.role);
 
         if (t.reporterName) {
           setResolvedReporter(t.reporterName);
@@ -94,6 +97,9 @@ export default function TaskDetailPage() {
     }
     load();
   }, [taskId]);
+
+  const canComment = userRole !== "client";
+  const canTransition = userRole === "site_admin" || userRole === "pm" || userRole === "developer";
 
   async function handleStatusChange(status: string) {
     try {
@@ -197,23 +203,25 @@ export default function TaskDetailPage() {
                 ))
               )}
             </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
-              />
-              <button
-                onClick={handleAddComment}
-                disabled={submitting || !newComment.trim()}
-                className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-              >
-                {submitting ? "..." : "Send"}
-              </button>
-            </div>
+            {canComment && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+                  placeholder="Add a comment..."
+                  className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={submitting || !newComment.trim()}
+                  className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+                >
+                  {submitting ? "..." : "Send"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -222,15 +230,21 @@ export default function TaskDetailPage() {
           <div className="bg-white rounded-lg border p-4 space-y-4">
             <div>
               <label className="text-xs text-gray-500 block mb-1">Status</label>
-              <select
-                value={task.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
-              >
-                {statusOptions.map((s) => (
-                  <option key={s} value={s}>{s.replace("_", " ")}</option>
-                ))}
-              </select>
+              {canTransition ? (
+                <select
+                  value={task.status}
+                  onChange={(e) => handleStatusChange(e.target.value)}
+                  className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+                >
+                  {statusOptions.map((s) => (
+                    <option key={s} value={s}>{s.replace("_", " ")}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[task.status] ?? ""}`}>
+                  {task.status.replace("_", " ")}
+                </span>
+              )}
             </div>
 
             <div>

@@ -7,6 +7,7 @@ import {
 } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 import { getDb } from "../db.js";
 import { writeAuditLog, computeDiff } from "./audit.js";
 import { broadcastToTenant } from "./sse.js";
@@ -267,7 +268,7 @@ export async function taskRoutes(app: FastifyInstance) {
   });
 
   // POST /:id/status — transition task status
-  app.post("/:id/status", async (request) => {
+  app.post("/:id/status", { preHandler: [requirePermission("task:transition")] }, async (request) => {
     const { tenantId, sub } = request.jwtPayload;
     const { id } = request.params as { id: string };
     const { status } = taskStatusTransitionSchema.parse(request.body);
