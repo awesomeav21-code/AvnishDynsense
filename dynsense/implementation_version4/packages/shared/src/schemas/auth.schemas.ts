@@ -16,11 +16,13 @@ export const loginSchema = z.object({
 });
 
 export const loginStep1Schema = z.object({
+  uid: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(1),
 });
 
 export const loginStep2Schema = z.object({
+  uid: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(1),
   tenantId: z.string().uuid(),

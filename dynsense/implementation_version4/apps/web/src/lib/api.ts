@@ -79,34 +79,34 @@ class ApiClient {
     return this.request<{
       accessToken: string;
       refreshToken: string;
-      user: { id: string; email: string; name: string; role: string; tenantId: string };
+      user: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
     }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password, workspace }),
     });
   }
 
-  loginIdentify(email: string, password: string) {
+  loginIdentify(uid: string, email: string, password: string) {
     return this.request<{
       requiresWorkspaceSelection: boolean;
       accessToken?: string;
       refreshToken?: string;
-      user?: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
+      user?: { id: string; accountId: string; uid: string; email: string; name: string; role: string; tenantId: string };
       workspaces?: Array<{ tenantId: string; tenantName: string; tenantSlug: string; userId: string; role: string }>;
     }>("/auth/login/identify", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ uid, email, password }),
     });
   }
 
-  loginSelect(email: string, password: string, tenantId: string) {
+  loginSelect(uid: string, email: string, password: string, tenantId: string) {
     return this.request<{
       accessToken: string;
       refreshToken: string;
-      user: { id: string; accountId: string; email: string; name: string; role: string; tenantId: string };
+      user: { id: string; accountId: string; uid: string; email: string; name: string; role: string; tenantId: string };
     }>("/auth/login/select", {
       method: "POST",
-      body: JSON.stringify({ email, password, tenantId }),
+      body: JSON.stringify({ uid, email, password, tenantId }),
     });
   }
 
@@ -125,7 +125,8 @@ class ApiClient {
     return this.request<{
       accessToken: string;
       refreshToken: string;
-      user: { id: string; email: string; name: string; role: string; tenantId: string };
+      uid: string;
+      user: { id: string; uid: string; email: string; name: string; role: string; tenantId: string };
     }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
@@ -134,7 +135,7 @@ class ApiClient {
 
   getMe() {
     return this.request<{
-      id: string; email: string; name: string; role: string; tenantId: string;
+      id: string; uid?: string; email: string; name: string; role: string; tenantId: string;
       accountId?: string;
       workspaces: Array<{ tenantId: string; tenantName: string; tenantSlug: string; userId: string; role: string }>;
     }>("/auth/me");

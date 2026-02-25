@@ -29,6 +29,13 @@
       "when": 1772075570000,
       "tag": "0003_add_accounts_multi_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772161970000,
+      "tag": "0004_add_accounts_uid",
+      "breakpoints": true
     }
   ]
 }

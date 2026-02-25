@@ -7,6 +7,8 @@
 - Created 3 realistic projects with 50 unique tasks, project phases, and 130+ backfilled audit log entries
 - Made audit log entries human-readable and added permanent filter tabs
 - Built a full send notification feature — backend endpoint + frontend form where users can pick a team member, select a task, and send an in-app notification
+- Added a timeline view as a new tab inside the My Tasks page, so tasks can be viewed on a timeline alongside the existing list, kanban, calendar, and table views
+- Redesigned the portfolio dashboard to show interactive charts and color-coded project cards instead of just plain numbers
 - Hid unused nav tabs (AI Sessions, AI Review, Integrations) while keeping files as backup
 
 **What did I learn?**

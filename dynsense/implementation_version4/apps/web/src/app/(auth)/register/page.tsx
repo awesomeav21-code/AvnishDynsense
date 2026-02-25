@@ -19,8 +19,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await api.register({ email, password, name, workspaceName });
-      router.push("/login?registered=true");
+      const res = await api.register({ email, password, name, workspaceName });
+      router.push(`/login?registered=true&uid=${encodeURIComponent(res.uid)}`);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

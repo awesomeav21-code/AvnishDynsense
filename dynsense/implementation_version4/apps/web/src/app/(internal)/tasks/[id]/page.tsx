@@ -60,6 +60,7 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [resolvedReporter, setResolvedReporter] = useState<string>("Unknown");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newComment, setNewComment] = useState("");
@@ -68,14 +69,23 @@ export default function TaskDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [taskRes, commentsRes, checklistsRes] = await Promise.all([
+        const [taskRes, commentsRes, checklistsRes, usersRes] = await Promise.all([
           api.getTask(taskId),
           api.getComments(taskId).catch(() => ({ data: [] as Comment[] })),
           api.getChecklists(taskId).catch(() => ({ data: [] as Checklist[] })),
+          api.getUsers().catch(() => ({ data: [] as Array<{ id: string; name: string }> })),
         ]);
-        setTask(taskRes.data as Task);
+        const t = taskRes.data as Task;
+        setTask(t);
         setComments(commentsRes.data as Comment[]);
         setChecklists(checklistsRes.data as Checklist[]);
+
+        if (t.reporterName) {
+          setResolvedReporter(t.reporterName);
+        } else if (t.reportedBy) {
+          const match = usersRes.data.find((u) => u.id === t.reportedBy);
+          setResolvedReporter(match?.name ?? "Unknown");
+        }
       } catch {
         setError("Failed to load task");
       } finally {
@@ -263,7 +273,7 @@ export default function TaskDetailPage() {
 
             <div>
               <label className="text-xs text-gray-500 block mb-1">Reported By</label>
-              <span className="text-xs">{task.reporterName ?? "—"}</span>
+              <span className="text-xs">{resolvedReporter}</span>
             </div>
           </div>
         </div>

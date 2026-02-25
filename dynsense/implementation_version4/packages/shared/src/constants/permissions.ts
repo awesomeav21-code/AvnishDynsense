@@ -33,11 +33,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "audit:read",
   ],
   pm: [
-    "project:create", "project:read", "project:update",
+    "project:create", "project:read", "project:update", "project:delete",
     "task:create", "task:read", "task:update", "task:delete", "task:assign", "task:transition",
     "comment:create", "comment:read",
     "user:manage",
-    "ai:execute", "ai:review",
+    "ai:execute", "ai:review", "ai:configure",
+    "config:manage",
     "audit:read",
   ],
   developer: [

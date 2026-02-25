@@ -77,9 +77,11 @@ export async function authRoutes(app: FastifyInstance) {
       const valid = await bcrypt.compare(body.password, account.passwordHash);
       if (!valid) throw AppError.unauthorized("An account with this email already exists. Please enter your existing password to create a new workspace.");
     } else {
-      // New identity
+      // New identity — generate a unique UID
       const passwordHash = await bcrypt.hash(body.password, 12);
+      const uid = `DS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       const [created] = await db.insert(accounts).values({
+        uid,
         email: body.email,
         passwordHash,
         name: body.name,
@@ -111,21 +113,26 @@ export async function authRoutes(app: FastifyInstance) {
 
     reply.status(201).send({
       ...tokens,
-      user: { id: membership.id, accountId: account.id, email: account.email, name: account.name, role: membership.role, tenantId },
+      uid: account.uid,
+      user: { id: membership.id, accountId: account.id, uid: account.uid, email: account.email, name: account.name, role: membership.role, tenantId },
     });
   });
 
-  // POST /login/identify — step 1: verify credentials, return workspace list
+  // POST /login/identify — step 1: verify credentials (UID + password), return workspace list
   app.post("/login/identify", async (request, reply) => {
     const body = loginStep1Schema.parse(request.body);
 
+    // Look up account by UID
     const account = await db.query.accounts.findFirst({
-      where: eq(accounts.email, body.email),
+      where: eq(accounts.uid, body.uid),
     });
-    if (!account) throw AppError.unauthorized("Invalid email or password");
+    if (!account) throw AppError.unauthorized("Invalid UID, email, or password");
+
+    // Verify email matches the account
+    if (account.email !== body.email) throw AppError.unauthorized("Invalid UID, email, or password");
 
     const valid = await bcrypt.compare(body.password, account.passwordHash);
-    if (!valid) throw AppError.unauthorized("Invalid email or password");
+    if (!valid) throw AppError.unauthorized("Invalid UID, email, or password");
 
     const workspaces = await getWorkspaces(account.id);
 
@@ -170,9 +177,11 @@ export async function authRoutes(app: FastifyInstance) {
     const body = loginStep2Schema.parse(request.body);
 
     const account = await db.query.accounts.findFirst({
-      where: eq(accounts.email, body.email),
+      where: eq(accounts.uid, body.uid),
     });
     if (!account) throw AppError.unauthorized("Invalid credentials");
+
+    if (account.email !== body.email) throw AppError.unauthorized("Invalid credentials");
 
     const valid = await bcrypt.compare(body.password, account.passwordHash);
     if (!valid) throw AppError.unauthorized("Invalid credentials");
@@ -240,14 +249,23 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (membership.status !== "active") throw AppError.forbidden("Account is not active");
 
+    // Resolve the global account for this membership
+    const memberUser = await db.query.users.findFirst({ where: eq(users.id, membership.userId) });
+    const accountId = memberUser?.accountId;
+    let resolvedAccountId = accountId ?? membership.userId;
+    if (accountId) {
+      const account = await db.query.accounts.findFirst({ where: eq(accounts.id, accountId) });
+      if (account) resolvedAccountId = account.id;
+    }
+
     const tokens = await issueTokens(
       { id: membership.userId, tenantId: membership.tenantId, role: membership.role },
-      membership.userId,
+      resolvedAccountId,
     );
 
     reply.send({
       ...tokens,
-      user: { id: membership.userId, email: membership.email, name: membership.name, role: membership.role, tenantId: membership.tenantId },
+      user: { id: membership.userId, accountId: resolvedAccountId, email: membership.email, name: membership.name, role: membership.role, tenantId: membership.tenantId },
     });
   });
 
@@ -340,9 +358,17 @@ export async function authRoutes(app: FastifyInstance) {
       }];
     }
 
+    // Fetch account to get UID
+    let uid: string | undefined;
+    if (resolvedAccountId) {
+      const account = await db.query.accounts.findFirst({ where: eq(accounts.id, resolvedAccountId) });
+      uid = account?.uid;
+    }
+
     return {
       id: user.id,
       accountId: resolvedAccountId,
+      uid,
       email: user.email,
       name: user.name,
       role: user.role,

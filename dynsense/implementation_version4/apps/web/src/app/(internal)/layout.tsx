@@ -18,7 +18,7 @@ const mainNavItems = [
   { label: "Notifications", href: "/notifications", icon: "scroll" },
   { label: "Team", href: "/team", icon: "users" },
   // { label: "Integrations", href: "/integrations", icon: "plug" },
-  { label: "Audit Log", href: "/audit", icon: "scroll" },
+  // { label: "Audit Log", href: "/audit", icon: "scroll" },
 ];
 
 const settingsNavItems = [
@@ -49,6 +49,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<{
+    id: string; uid?: string; accountId?: string;
     name: string; email: string; role: string; tenantId: string;
     workspaces: Array<{ tenantId: string; tenantName: string; tenantSlug: string; role: string }>;
   } | null>(null);

@@ -16,8 +16,14 @@ if (!DATABASE_URL) {
 
 const db = createDb(DATABASE_URL);
 
-// Pre-computed bcrypt hash for "password123" (cost 12)
-const PASSWORD_HASH = "$2b$12$5t6AFKiPivtsb99gBxVzbO2u9hk1tE.syBUYW7Uh0S/VYgMkSCr3G";
+// Pre-computed bcrypt hashes (cost 12) — each user has a unique password
+const PASSWORD_HASHES: Record<string, string> = {
+  "Admin@2026": "$2b$12$L/MHDwV0dsxeBBMkPDh/K./z6uD8pTuy.0.bZe/XYU8Q65VCnGMZC",
+  "BobPM#456": "$2b$12$u.V898w.Yrf2HUXYaOkjCeI1p0VQPcJvV1omEIVaD4HqVjVypXQ1i",
+  "Carol!Dev7": "$2b$12$Nu9hHF8mGVbxEdB7qpTXc.bXhcoXRSPJ3Fy8oQIrG0G3yhMA/YCQm",
+  "DaveK!m89": "$2b$12$CbbWf5et.DVb4./OI2Vjx.RGnnDuZ5.FJcXEEIO3noOI983cdIkwm",
+  "EveW!ll01": "$2b$12$CNGq04sBVRCbwFnubRZ9L.RCrBjAfxmI2MIIlbvNkg7MKCa7I6XVO",
+};
 
 async function seed() {
   console.log("Seeding database with comprehensive demo data...");
@@ -71,11 +77,11 @@ async function seed() {
 
   // --- Ensure we have enough users with varied roles + accounts ---
   const seedUserDefs = [
-    { email: "alice@demo.com", name: "Alice Chen", role: "site_admin" },
-    { email: "bob@demo.com", name: "Bob Martinez", role: "pm" },
-    { email: "carol@demo.com", name: "Carol Johnson", role: "developer" },
-    { email: "dave@demo.com", name: "Dave Kim", role: "developer" },
-    { email: "eve@demo.com", name: "Eve Williams", role: "developer" },
+    { email: "alice@demo.com", name: "Alice Chen", role: "site_admin", uid: "DS-ALICE1", password: "Admin@2026" },
+    { email: "bob@demo.com", name: "Bob Martinez", role: "pm", uid: "DS-BOB123", password: "BobPM#456" },
+    { email: "carol@demo.com", name: "Carol Johnson", role: "developer", uid: "DS-CAROL1", password: "Carol!Dev7" },
+    { email: "dave@demo.com", name: "Dave Kim", role: "developer", uid: "DS-DAVE01", password: "DaveK!m89" },
+    { email: "eve@demo.com", name: "Eve Williams", role: "developer", uid: "DS-EVE001", password: "EveW!ll01" },
   ];
 
   const existingUsers = await db.select().from(users).where(eq(users.tenantId, tid)).orderBy(asc(users.createdAt));
@@ -94,23 +100,26 @@ async function seed() {
     }
 
     // Ensure account exists for the seed email
+    const hash = PASSWORD_HASHES[def.password]!;
+
     let account = await db.query.accounts.findFirst({ where: eq(accounts.email, def.email) });
     if (!account) {
       const [created] = await db.insert(accounts).values({
+        uid: def.uid,
         email: def.email,
-        passwordHash: PASSWORD_HASH,
+        passwordHash: hash,
         name: def.name,
       }).returning();
       account = created!;
     } else {
-      await db.update(accounts).set({ passwordHash: PASSWORD_HASH, name: def.name }).where(eq(accounts.id, account.id));
+      await db.update(accounts).set({ uid: def.uid, passwordHash: hash, name: def.name }).where(eq(accounts.id, account.id));
     }
 
     await db.update(users).set({
       role: def.role,
       name: def.name,
       email: def.email,
-      passwordHash: PASSWORD_HASH,
+      passwordHash: hash,
       accountId: account.id,
     }).where(eq(users.id, user.id));
   }
@@ -118,13 +127,15 @@ async function seed() {
   // Create additional users if fewer than 5
   for (let i = existingUsers.length; i < seedUserDefs.length; i++) {
     const def = seedUserDefs[i]!;
+    const hash = PASSWORD_HASHES[def.password]!;
 
     // Create or find account
     let account = await db.query.accounts.findFirst({ where: eq(accounts.email, def.email) });
     if (!account) {
       const [created] = await db.insert(accounts).values({
+        uid: def.uid,
         email: def.email,
-        passwordHash: PASSWORD_HASH,
+        passwordHash: hash,
         name: def.name,
       }).returning();
       account = created!;
@@ -134,7 +145,7 @@ async function seed() {
       tenantId: tid,
       accountId: account.id,
       email: def.email,
-      passwordHash: PASSWORD_HASH,
+      passwordHash: hash,
       name: def.name,
       role: def.role,
     }).returning();
@@ -244,6 +255,7 @@ async function seed() {
         status: t.status,
         priority: t.priority,
         assigneeId: allUsers[i % allUsers.length]!.id,
+        reportedBy: allUsers[(i + 1) % allUsers.length]!.id,
         position: i,
         estimatedEffort: t.effort,
         dueDate: new Date(Date.now() + (i - (3 + insertedProjects.indexOf(project) * 2)) * 86400000 * 2),
@@ -257,6 +269,7 @@ async function seed() {
     for (let i = 0; i < Math.min(8, insertedTasks.length); i++) {
       const secondAssignee = allUsers[(i + 2) % allUsers.length]!;
       await db.insert(taskAssignments).values({
+        tenantId: tid,
         taskId: insertedTasks[i]!.id,
         userId: secondAssignee.id,
       }).onConflictDoNothing();
@@ -484,7 +497,11 @@ async function seed() {
 
   console.log("\nSeed complete!");
   console.log(`  Tenant: ${existingTenant.name} (${tid})`);
-  console.log(`  ${allUsers.length} users (existing passwords preserved, new users: password123)`);
+  console.log(`  ${allUsers.length} users`);
+  console.log("  Login credentials:");
+  for (const def of seedUserDefs) {
+    console.log(`    ${def.name} | UID: ${def.uid} | Email: ${def.email} | Password: ${def.password}`);
+  }
   console.log(`  ${insertedTags.length} tags`);
   console.log(`  ${insertedProjects.length} projects, ${insertedProjects.length * 4} phases, ${allTasks.length} tasks`);
   console.log("  Comments, checklists, dependencies, assignments, notifications, reminders, audit log");
