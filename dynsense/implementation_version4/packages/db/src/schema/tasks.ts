@@ -20,6 +20,7 @@ export const tasks = pgTable("tasks", {
   status: varchar("status", { length: 50 }).notNull().default("created"),
   priority: varchar("priority", { length: 50 }).notNull().default("medium"),
   assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
+  sprint: varchar("sprint", { length: 50 }).notNull().default("R0"),
   reportedBy: uuid("reported_by").references(() => users.id, { onDelete: "set null" }),
   estimatedEffort: numeric("estimated_effort"),
   actualEffort: numeric("actual_effort"),

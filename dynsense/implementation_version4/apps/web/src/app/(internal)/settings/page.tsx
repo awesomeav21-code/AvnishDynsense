@@ -21,19 +21,39 @@ const DEFAULT_FLAGS = [
 export default function SettingsPage() {
   const [flags, setFlags] = useState<Record<string, FeatureFlag>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [togglingKey, setTogglingKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"features" | "security" | "ai">("features");
 
   useEffect(() => {
     api.getFeatureFlags()
       .then((res) => setFlags(res.data))
+      .catch(() => setError("Failed to load feature flags"))
       .finally(() => setLoading(false));
   }, []);
 
   async function toggleFlag(key: string) {
+    setTogglingKey(key);
+    setError("");
     const current = flags[key]?.enabled ?? false;
-    await api.upsertFeatureFlag({ key, enabled: !current });
-    const res = await api.getFeatureFlags();
-    setFlags(res.data);
+    setFlags((prev) => ({
+      ...prev,
+      [key]: { enabled: !current, metadata: prev[key]?.metadata ?? {} },
+    }));
+    try {
+      await api.upsertFeatureFlag({ key, enabled: !current });
+    } catch (err) {
+      setFlags((prev) => ({
+        ...prev,
+        [key]: { enabled: current, metadata: prev[key]?.metadata ?? {} },
+      }));
+      const msg = err instanceof Error && err.message.includes("Missing permission")
+        ? "You don't have permission to change feature flags. Contact an Admin or PM."
+        : "Failed to update feature flag.";
+      setError(msg);
+    } finally {
+      setTogglingKey(null);
+    }
   }
 
   if (loading) {
@@ -55,6 +75,13 @@ export default function SettingsPage() {
         <h1 className="text-lg font-bold">Settings</h1>
         <p className="text-xs text-gray-500 mt-1">Manage feature flags, security, and AI configuration</p>
       </div>
+
+      {error && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
+          {error}
+          <button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600">&times;</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
@@ -78,6 +105,7 @@ export default function SettingsPage() {
         <div className="space-y-2">
           {DEFAULT_FLAGS.map((flag) => {
             const isEnabled = flags[flag.key]?.enabled ?? false;
+            const isToggling = togglingKey === flag.key;
             return (
               <div key={flag.key} className="bg-white rounded-lg border px-4 py-3 flex items-center justify-between">
                 <div>
@@ -86,9 +114,10 @@ export default function SettingsPage() {
                 </div>
                 <button
                   onClick={() => toggleFlag(flag.key)}
+                  disabled={isToggling}
                   className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                     isEnabled ? "bg-green-500" : "bg-gray-300"
-                  }`}
+                  } ${isToggling ? "opacity-50" : ""}`}
                 >
                   <span
                     className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${

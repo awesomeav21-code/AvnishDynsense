@@ -14,6 +14,15 @@ import { broadcastToTenant } from "./sse.js";
 import type { Env } from "../config/env.js";
 import { z } from "zod";
 
+const VALID_STATUSES = ["created", "ready", "in_progress", "review", "completed", "blocked", "cancelled"];
+
+function normalizeStatus<T extends { status: string }>(row: T): T {
+  if (!VALID_STATUSES.includes(row.status)) {
+    return { ...row, status: "created" };
+  }
+  return row;
+}
+
 export async function taskRoutes(app: FastifyInstance) {
   const env = app.env as Env;
   const db = getDb(env);
@@ -39,7 +48,7 @@ export async function taskRoutes(app: FastifyInstance) {
       .limit(filters.limit)
       .offset(filters.offset);
 
-    return { data: rows };
+    return { data: rows.map(normalizeStatus) };
   });
 
   // GET /whats-next — personalized prioritized task list (FR-202)
@@ -161,7 +170,7 @@ export async function taskRoutes(app: FastifyInstance) {
       };
     });
 
-    return { data: top10 };
+    return { data: top10.map(normalizeStatus) };
   });
 
   // POST / — create task
@@ -186,6 +195,7 @@ export async function taskRoutes(app: FastifyInstance) {
       startDate: body.startDate ? new Date(body.startDate) : undefined,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       estimatedEffort: body.estimatedEffort?.toString(),
+      sprint: body.sprint,
       reportedBy: body.reportedBy ?? request.jwtPayload.sub,
     }).returning();
 
@@ -221,7 +231,7 @@ export async function taskRoutes(app: FastifyInstance) {
       reporterName = reporter?.name ?? null;
     }
 
-    return { data: { ...task, reporterName } };
+    return { data: normalizeStatus({ ...task, reporterName }) };
   });
 
   // PATCH /:id — update task
@@ -243,6 +253,7 @@ export async function taskRoutes(app: FastifyInstance) {
     if (body.startDate !== undefined) updateData["startDate"] = body.startDate ? new Date(body.startDate) : null;
     if (body.dueDate !== undefined) updateData["dueDate"] = body.dueDate ? new Date(body.dueDate) : null;
     if (body.estimatedEffort !== undefined) updateData["estimatedEffort"] = body.estimatedEffort?.toString() ?? null;
+    if (body.sprint !== undefined) updateData["sprint"] = body.sprint;
 
     const [updated] = await db.update(tasks)
       .set(updateData)
@@ -436,7 +447,7 @@ export async function taskRoutes(app: FastifyInstance) {
       ))
       .orderBy(tasks.position);
 
-    return { data: subtasks };
+    return { data: subtasks.map(normalizeStatus) };
   });
 
   // POST /:id/promote — move sub-task up to parent's level

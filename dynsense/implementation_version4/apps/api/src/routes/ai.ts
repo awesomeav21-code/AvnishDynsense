@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, desc } from "drizzle-orm";
-import { aiActions, aiSessions, aiHookLog, projects } from "@dynsense/db";
+import { eq, and, desc, isNull, ne } from "drizzle-orm";
+import { aiActions, aiSessions, aiHookLog, projects, tasks, users } from "@dynsense/db";
 import { aiExecuteSchema, aiReviewActionSchema } from "@dynsense/shared";
 import { AIOrchestrator } from "@dynsense/agents";
 import { AppError } from "../utils/errors.js";
@@ -22,12 +22,102 @@ export async function aiRoutes(app: FastifyInstance) {
 
   app.addHook("preHandler", authenticate);
 
+  // Build project/task/team context for NL queries so Claude has real data to answer from
+  async function buildNlQueryContext(tenantId: string): Promise<Record<string, unknown>> {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const [projectRows, taskRows, teamRows] = await Promise.all([
+      db.select({
+        id: projects.id,
+        name: projects.name,
+        status: projects.status,
+        startDate: projects.startDate,
+        endDate: projects.endDate,
+      })
+        .from(projects)
+        .where(and(eq(projects.tenantId, tenantId), isNull(projects.deletedAt)))
+        .limit(50),
+
+      db.select({
+        id: tasks.id,
+        projectId: tasks.projectId,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        assigneeId: tasks.assigneeId,
+        dueDate: tasks.dueDate,
+        completedAt: tasks.completedAt,
+      })
+        .from(tasks)
+        .where(and(eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt)))
+        .limit(500),
+
+      db.select({
+        id: users.id,
+        name: users.name,
+        role: users.role,
+      })
+        .from(users)
+        .where(and(eq(users.tenantId, tenantId), eq(users.status, "active")))
+        .limit(100),
+    ]);
+
+    // Build user ID → name lookup and compute summary stats
+    const userMap: Record<string, string> = {};
+    for (const u of teamRows) userMap[u.id] = u.name;
+
+    const statusCounts: Record<string, number> = {};
+    let overdueCount = 0;
+    let dueSoonCount = 0;
+    for (const t of taskRows) {
+      statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
+      if (t.dueDate && new Date(t.dueDate) < now && t.status !== "completed" && t.status !== "cancelled") {
+        overdueCount++;
+      }
+      if (t.dueDate && new Date(t.dueDate) >= now && new Date(t.dueDate) <= sevenDaysFromNow && t.status !== "completed" && t.status !== "cancelled") {
+        dueSoonCount++;
+      }
+    }
+
+    return {
+      currentDate: now.toISOString(),
+      projects: projectRows.map((p) => ({
+        id: p.id, name: p.name, status: p.status,
+        startDate: p.startDate?.toISOString() ?? null,
+        endDate: p.endDate?.toISOString() ?? null,
+      })),
+      tasks: taskRows.map((t) => ({
+        id: t.id, projectId: t.projectId, title: t.title,
+        status: t.status, priority: t.priority,
+        assignee: t.assigneeId ? (userMap[t.assigneeId] ?? t.assigneeId) : null,
+        dueDate: t.dueDate?.toISOString() ?? null,
+        completedAt: t.completedAt?.toISOString() ?? null,
+      })),
+      team: teamRows.map((u) => ({ id: u.id, name: u.name, role: u.role })),
+      summary: {
+        totalProjects: projectRows.length,
+        totalTasks: taskRows.length,
+        tasksByStatus: statusCounts,
+        overdueTasks: overdueCount,
+        dueSoonTasks: dueSoonCount,
+      },
+    };
+  }
+
   // POST /execute — trigger AI capability
   app.post("/execute", async (request, reply) => {
     const { tenantId, sub: userId } = request.jwtPayload;
     const body = aiExecuteSchema.parse(request.body);
 
-    // Create ai_action record
+    // Enrich nl_query input with actual project/task data from the database
+    let enrichedInput = body.input;
+    if (body.capability === "nl_query") {
+      const context = await buildNlQueryContext(tenantId);
+      enrichedInput = { ...body.input, context };
+    }
+
+    // Create ai_action record (store original input, not the bulky enriched version)
     const [action] = await db.insert(aiActions).values({
       tenantId,
       capability: body.capability,
@@ -43,7 +133,7 @@ export async function aiRoutes(app: FastifyInstance) {
       tenantId,
       userId,
       capability: body.capability,
-      input: body.input,
+      input: enrichedInput,
       sessionId: body.sessionId,
     });
 

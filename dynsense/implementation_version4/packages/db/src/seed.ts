@@ -266,6 +266,7 @@ async function seed() {
           description: `${t.title} for ${project.name}. This task covers all relevant subtasks and deliverables.`,
           status: t.status,
           priority: t.priority,
+          sprint: i % 2 === 0 ? "R0" : "R1",
           assigneeId: allUsers[i % allUsers.length]!.id,
           reportedBy: allUsers[(i + 1) % allUsers.length]!.id,
           position: i,

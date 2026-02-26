@@ -15,6 +15,8 @@ interface Task {
   startDate: string | null;
   dueDate: string | null;
   projectId: string;
+  phaseId: string | null;
+  sprint: string | null;
   estimatedEffort: string | null;
   reportedBy: string | null;
   reporterName: string | null;
@@ -35,6 +37,11 @@ interface Checklist {
   items: Array<{ id: string; label: string; completed: boolean }>;
   completionPercent: number;
 }
+
+interface Tag { id: string; name: string; color: string }
+interface Subtask { id: string; title: string; status: string }
+interface User { id: string; name: string }
+interface Phase { id: string; name: string }
 
 const statusOptions = ["created", "ready", "in_progress", "review", "completed", "blocked", "cancelled"];
 const statusColors: Record<string, string> = {
@@ -60,35 +67,60 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
-  const [resolvedReporter, setResolvedReporter] = useState<string>("Unknown");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [phases, setPhases] = useState<Phase[]>([]);
+  const [projectName, setProjectName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [userRole, setUserRole] = useState<string>("");
+
+  // Editable fields
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [editDesc, setEditDesc] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const [taskRes, commentsRes, checklistsRes, usersRes, meRes] = await Promise.all([
+        const [taskRes, commentsRes, checklistsRes, tagsRes, usersRes, meRes] = await Promise.all([
           api.getTask(taskId),
           api.getComments(taskId).catch(() => ({ data: [] as Comment[] })),
           api.getChecklists(taskId).catch(() => ({ data: [] as Checklist[] })),
-          api.getUsers().catch(() => ({ data: [] as Array<{ id: string; name: string }> })),
+          api.getTaskTags(taskId).catch(() => ({ data: [] as Tag[] })),
+          api.getUsers().catch(() => ({ data: [] as User[] })),
           api.getMe().catch(() => null),
         ]);
         const t = taskRes.data as Task;
+
+        if (!statusOptions.includes(t.status)) {
+          t.status = "created";
+          api.updateTaskStatus(taskId, "created").catch(() => {});
+        }
+
         setTask(t);
         setComments(commentsRes.data as Comment[]);
         setChecklists(checklistsRes.data as Checklist[]);
-        if (meRes) setUserRole(meRes.role);
+        setTags(tagsRes.data as Tag[]);
+        setUsers(usersRes.data as User[]);
+        setEditTitle(t.title);
+        setEditDesc(t.description ?? "");
 
-        if (t.reporterName) {
-          setResolvedReporter(t.reporterName);
-        } else if (t.reportedBy) {
-          const match = usersRes.data.find((u) => u.id === t.reportedBy);
-          setResolvedReporter(match?.name ?? "Unknown");
-        }
+        api.getProject(t.projectId).then((res) => {
+          setProjectName((res.data as { name: string }).name);
+        }).catch(() => {});
+
+        api.getPhases(t.projectId).then((res) => {
+          setPhases(res.data as Phase[]);
+        }).catch(() => {});
+
+        api.request<{ data: Subtask[] }>(`/tasks/${taskId}/subtasks`).then((res) => {
+          setSubtasks(res.data);
+        }).catch(() => {});
+
       } catch {
         setError("Failed to load task");
       } finally {
@@ -98,8 +130,14 @@ export default function TaskDetailPage() {
     load();
   }, [taskId]);
 
-  const canComment = userRole !== "client";
-  const canTransition = userRole === "site_admin" || userRole === "pm" || userRole === "developer";
+  async function updateField(data: Record<string, unknown>) {
+    try {
+      await api.updateTask(taskId, data as Parameters<typeof api.updateTask>[1]);
+      setTask((prev) => prev ? { ...prev, ...data, updatedAt: new Date().toISOString() } as Task : prev);
+    } catch {
+      setError("Failed to update");
+    }
+  }
 
   async function handleStatusChange(status: string) {
     try {
@@ -107,6 +145,17 @@ export default function TaskDetailPage() {
       setTask((prev) => prev ? { ...prev, status } : prev);
     } catch {
       setError("Failed to update status");
+    }
+  }
+
+  async function handleAssigneeChange(userId: string) {
+    try {
+      if (userId) {
+        await api.assignTask(taskId, userId);
+      }
+      setTask((prev) => prev ? { ...prev, assigneeId: userId || null } : prev);
+    } catch {
+      setError("Failed to update assignee");
     }
   }
 
@@ -141,27 +190,139 @@ export default function TaskDetailPage() {
     );
   }
 
+  const assigneeName = users.find((u) => u.id === task.assigneeId)?.name ?? "";
+  const phaseName = phases.find((p) => p.id === task.phaseId)?.name ?? "";
+  const reporterName = task.reporterName ?? users.find((u) => u.id === task.reportedBy)?.name ?? "Unknown";
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-500">
         <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
         <span>/</span>
-        <Link href={`/projects/${task.projectId}`} className="hover:text-gray-700">Project</Link>
+        <Link href={`/projects/${task.projectId}`} className="hover:text-gray-700">{projectName || "Project"}</Link>
         <span>/</span>
         <span className="text-gray-900 truncate max-w-[200px]">{task.title}</span>
       </div>
 
-      {/* Three-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Title */}
           <div className="bg-white rounded-lg border p-6">
-            <h1 className="text-xl font-bold">{task.title}</h1>
-            {task.description && (
-              <p className="text-sm text-gray-600 mt-3 whitespace-pre-wrap">{task.description}</p>
+            {editingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setEditingTitle(false);
+                      if (editTitle.trim() && editTitle !== task.title) updateField({ title: editTitle.trim() });
+                    }
+                    if (e.key === "Escape") { setEditTitle(task.title); setEditingTitle(false); }
+                  }}
+                  className="text-xl font-bold w-full border-b-2 border-ai focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    setEditingTitle(false);
+                    if (editTitle.trim() && editTitle !== task.title) updateField({ title: editTitle.trim() });
+                  }}
+                  className="text-xs px-2 py-1 text-white bg-ai rounded-md"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => { setEditTitle(task.title); setEditingTitle(false); }}
+                  className="text-xs px-2 py-1 text-gray-600 border rounded-md"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <h1 className="text-xl font-bold">{task.title}</h1>
+                <button
+                  onClick={() => setEditingTitle(true)}
+                  className="text-xs px-2 py-1 text-gray-500 border rounded-md hover:bg-gray-50"
+                >
+                  Edit
+                </button>
+              </div>
             )}
           </div>
+
+          {/* Description */}
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Description</h2>
+              {!editingDesc && (
+                <button
+                  onClick={() => setEditingDesc(true)}
+                  className="text-xs px-2 py-1 text-gray-500 border rounded-md hover:bg-gray-50"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            {editingDesc ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setEditDesc(task.description ?? ""); setEditingDesc(false); }
+                  }}
+                  rows={5}
+                  className="w-full text-sm text-gray-600 border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ai/50 resize-none"
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setEditingDesc(false);
+                      if (editDesc !== (task.description ?? "")) updateField({ description: editDesc || undefined });
+                    }}
+                    className="text-xs px-2 py-1 text-white bg-ai rounded-md"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setEditDesc(task.description ?? ""); setEditingDesc(false); }}
+                    className="text-xs px-2 py-1 text-gray-600 border rounded-md"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              task.description ? (
+                <p className="text-sm text-gray-600 whitespace-pre-wrap">{task.description}</p>
+              ) : (
+                <p className="text-xs text-gray-400">No description provided</p>
+              )
+            )}
+          </div>
+
+          {/* Subtasks */}
+          {subtasks.length > 0 && (
+            <div className="bg-white rounded-lg border p-6">
+              <h2 className="text-sm font-semibold mb-3">Subtasks</h2>
+              <div className="space-y-1.5">
+                {subtasks.map((st) => (
+                  <Link key={st.id} href={`/tasks/${st.id}`} className="flex items-center gap-2 text-xs hover:bg-gray-50 rounded px-2 py-1.5 -mx-2">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColors[st.status]?.split(" ")[0] ?? "bg-gray-200"}`} />
+                    <span className="flex-1 truncate">{st.title}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColors[st.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {st.status.replace("_", " ")}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Checklists */}
           {checklists.length > 0 && (
@@ -188,9 +349,9 @@ export default function TaskDetailPage() {
             </div>
           )}
 
-          {/* Comments / Activity */}
+          {/* Comments */}
           <div className="bg-white rounded-lg border p-6">
-            <h2 className="text-sm font-semibold mb-3">Activity</h2>
+            <h2 className="text-sm font-semibold mb-3">Comments</h2>
             <div className="space-y-3 mb-4">
               {comments.length === 0 ? (
                 <p className="text-xs text-gray-400">No comments yet</p>
@@ -203,91 +364,182 @@ export default function TaskDetailPage() {
                 ))
               )}
             </div>
-            {canComment && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
-                  placeholder="Add a comment..."
-                  className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
-                />
-                <button
-                  onClick={handleAddComment}
-                  disabled={submitting || !newComment.trim()}
-                  className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-                >
-                  {submitting ? "..." : "Send"}
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+                placeholder="Add a comment..."
+                className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+              />
+              <button
+                onClick={handleAddComment}
+                disabled={submitting || !newComment.trim()}
+                className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+              >
+                {submitting ? "..." : "Send"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Sidebar — all editable */}
         <div className="space-y-4">
           <div className="bg-white rounded-lg border p-4 space-y-4">
+            {/* Status */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Status</label>
-              {canTransition ? (
-                <select
-                  value={task.status}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>{s.replace("_", " ")}</option>
-                  ))}
-                </select>
-              ) : (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[task.status] ?? ""}`}>
-                  {task.status.replace("_", " ")}
-                </span>
-              )}
+              <select
+                value={task.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{s.replace("_", " ")}</option>
+                ))}
+              </select>
             </div>
 
+            {/* Sprint */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Sprint</label>
+              <select
+                value={task.sprint || "R0"}
+                onChange={(e) => updateField({ sprint: e.target.value })}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              >
+                <option value="R0">R0</option>
+                <option value="R1">R1</option>
+              </select>
+            </div>
+
+            {/* Priority */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Priority</label>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${priorityColors[task.priority] ?? ""}`}>
-                {task.priority}
-              </span>
+              <select
+                value={task.priority}
+                onChange={(e) => updateField({ priority: e.target.value })}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
             </div>
 
-            {task.startDate && (
+            {/* Project */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Project</label>
+              <Link href={`/projects/${task.projectId}`} className="text-xs text-ai hover:underline">
+                {projectName || "—"}
+              </Link>
+            </div>
+
+            {/* Phase */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Phase</label>
+              <select
+                value={task.phaseId ?? ""}
+                onChange={(e) => updateField({ phaseId: e.target.value || null })}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              >
+                <option value="">No phase</option>
+                {phases.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Assignee */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Assignee</label>
+              <select
+                value={task.assigneeId ?? ""}
+                onChange={(e) => handleAssigneeChange(e.target.value)}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              >
+                <option value="">Unassigned</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Start Date */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Start Date</label>
+              <input
+                type="date"
+                value={task.startDate ? new Date(task.startDate).toISOString().split("T")[0] : ""}
+                onChange={(e) => updateField({ startDate: e.target.value || null })}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              />
+            </div>
+
+            {/* Due Date */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Due Date</label>
+              <input
+                type="date"
+                value={task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : ""}
+                onChange={(e) => updateField({ dueDate: e.target.value || null })}
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              />
+            </div>
+
+            {/* Estimated Effort */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Estimated Effort (hrs)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={task.estimatedEffort ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value ? parseFloat(e.target.value) : null;
+                  updateField({ estimatedEffort: val });
+                }}
+                placeholder="e.g. 4"
+                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+              />
+            </div>
+
+            {/* Tags */}
+            {tags.length > 0 && (
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Start Date</label>
-                <span className="text-xs">{new Date(task.startDate).toLocaleDateString()}</span>
+                <label className="text-xs text-gray-500 block mb-1">Tags</label>
+                <div className="flex flex-wrap gap-1">
+                  {tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full text-white"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
-            {task.dueDate && (
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Due Date</label>
-                <span className="text-xs">{new Date(task.dueDate).toLocaleDateString()}</span>
-              </div>
-            )}
+            {/* Reported By */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Reported By</label>
+              <span className="text-xs">{reporterName}</span>
+            </div>
 
-            {task.estimatedEffort && (
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Estimated Effort</label>
-                <span className="text-xs">{task.estimatedEffort}h</span>
-              </div>
-            )}
-
+            {/* Created */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Created</label>
               <span className="text-xs">{new Date(task.createdAt).toLocaleDateString()}</span>
             </div>
 
+            {/* Updated */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Updated</label>
               <span className="text-xs">{new Date(task.updatedAt).toLocaleDateString()}</span>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Reported By</label>
-              <span className="text-xs">{resolvedReporter}</span>
             </div>
           </div>
         </div>

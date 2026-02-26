@@ -185,17 +185,17 @@ class ApiClient {
   }
 
   getTask(id: string) {
-    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; reportedBy: string | null; reporterName: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
+    return this.request<{ data: { id: string; title: string; description: string | null; status: string; priority: string; assigneeId: string | null; startDate: string | null; dueDate: string | null; projectId: string; estimatedEffort: string | null; sprint: string | null; reportedBy: string | null; reporterName: string | null; createdAt: string; updatedAt: string } }>(`/tasks/${id}`);
   }
 
-  createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string; parentTaskId?: string; reportedBy?: string }) {
+  createTask(data: { projectId: string; title: string; description?: string; priority?: string; startDate?: string; dueDate?: string; estimatedEffort?: number; phaseId?: string; parentTaskId?: string; sprint?: string; reportedBy?: string }) {
     return this.request<{ data: { id: string; title: string } }>("/tasks", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  updateTask(id: string, data: { title?: string; description?: string; priority?: string; dueDate?: string; estimatedEffort?: number }) {
+  updateTask(id: string, data: { title?: string; description?: string; priority?: string; phaseId?: string | null; sprint?: string | null; startDate?: string | null; dueDate?: string | null; estimatedEffort?: number | null }) {
     return this.request(`/tasks/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

@@ -139,6 +139,7 @@ function MyTasksContent() {
   const [newEstimatedEffort, setNewEstimatedEffort] = useState("");
   const [newAssigneeId, setNewAssigneeId] = useState("");
   const [newPhaseId, setNewPhaseId] = useState("");
+  const [newSprint, setNewSprint] = useState("R0");
   const [creating, setCreating] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [phases, setPhases] = useState<Phase[]>([]);
@@ -228,6 +229,7 @@ function MyTasksContent() {
         dueDate: newDueDate || undefined,
         estimatedEffort: effort && !isNaN(effort) ? effort : undefined,
         phaseId: newPhaseId || undefined,
+        sprint: newSprint || undefined,
         reportedBy: newReportedBy || undefined,
       });
 
@@ -284,6 +286,7 @@ function MyTasksContent() {
       setNewEstimatedEffort("");
       setNewAssigneeId("");
       setNewPhaseId("");
+      setNewSprint("R0");
       setNewReportedBy(currentUser?.id ?? "");
       setSubtasks([]);
       setSubtaskInput("");
@@ -295,7 +298,7 @@ function MyTasksContent() {
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId, newReportedBy, subtasks, selectedTagIds, newComment, currentUser]);
+  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, selectedTagIds, newComment, currentUser]);
 
   const handleStatusChange = useCallback(async (taskId: string, newStatus: string) => {
     setChangingStatusId(null);
@@ -460,6 +463,19 @@ function MyTasksContent() {
                   {u.name}{u.id === currentUser?.id ? " (You)" : ""}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Sprint */}
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Sprint</label>
+            <select
+              value={newSprint}
+              onChange={(e) => setNewSprint(e.target.value)}
+              className="w-full text-xs px-2 py-1.5 border rounded-md"
+            >
+              <option value="R0">R0</option>
+              <option value="R1">R1</option>
             </select>
           </div>
 

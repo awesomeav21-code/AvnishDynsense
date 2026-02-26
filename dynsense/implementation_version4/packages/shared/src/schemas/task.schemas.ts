@@ -13,6 +13,7 @@ export const createTaskSchema = z.object({
   startDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).optional(),
   dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).optional(),
   estimatedEffort: z.number().positive().optional(),
+  sprint: z.string().max(50).optional(),
   reportedBy: z.string().uuid().optional(),
 });
 
@@ -24,6 +25,7 @@ export const updateTaskSchema = z.object({
   startDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).nullable().optional(),
   dueDate: z.string().refine((s) => !isNaN(Date.parse(s)), { message: "Invalid date" }).nullable().optional(),
   estimatedEffort: z.number().positive().nullable().optional(),
+  sprint: z.string().max(50).nullable().optional(),
 });
 
 export const taskStatusTransitionSchema = z.object({
