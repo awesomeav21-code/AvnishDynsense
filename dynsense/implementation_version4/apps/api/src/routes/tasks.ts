@@ -35,20 +35,21 @@ export async function taskRoutes(app: FastifyInstance) {
     const { tenantId } = request.jwtPayload;
     const filters = taskFilterSchema.parse(request.query);
 
-    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt)];
+    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt)];
 
     if (filters.projectId) conditions.push(eq(tasks.projectId, filters.projectId));
     if (filters.status) conditions.push(eq(tasks.status, filters.status));
     if (filters.priority) conditions.push(eq(tasks.priority, filters.priority));
     if (filters.assigneeId) conditions.push(eq(tasks.assigneeId, filters.assigneeId));
 
-    const rows = await db.select().from(tasks)
+    const rows = await db.select({ tasks }).from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(...conditions))
       .orderBy(tasks.position)
       .limit(filters.limit)
       .offset(filters.offset);
 
-    return { data: rows.map(normalizeStatus) };
+    return { data: rows.map((r) => normalizeStatus(r.tasks)) };
   });
 
   // GET /whats-next — personalized prioritized task list (FR-202)
@@ -248,12 +249,14 @@ export async function taskRoutes(app: FastifyInstance) {
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
     if (body.title !== undefined) updateData["title"] = body.title;
     if (body.description !== undefined) updateData["description"] = body.description;
+    if (body.projectId !== undefined) updateData["projectId"] = body.projectId;
     if (body.priority !== undefined) updateData["priority"] = body.priority;
     if (body.phaseId !== undefined) updateData["phaseId"] = body.phaseId;
     if (body.startDate !== undefined) updateData["startDate"] = body.startDate ? new Date(body.startDate) : null;
     if (body.dueDate !== undefined) updateData["dueDate"] = body.dueDate ? new Date(body.dueDate) : null;
     if (body.estimatedEffort !== undefined) updateData["estimatedEffort"] = body.estimatedEffort?.toString() ?? null;
     if (body.sprint !== undefined) updateData["sprint"] = body.sprint;
+    if (body.reportedBy !== undefined) updateData["reportedBy"] = body.reportedBy;
 
     const [updated] = await db.update(tasks)
       .set(updateData)
@@ -386,7 +389,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const { tenantId } = request.jwtPayload;
     const { projectId } = request.query as { projectId?: string };
 
-    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt)];
+    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt)];
     if (projectId) conditions.push(eq(tasks.projectId, projectId));
 
     const rows = await db.select({
@@ -394,6 +397,7 @@ export async function taskRoutes(app: FastifyInstance) {
       count: sql<number>`count(*)::int`,
     })
       .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
       .where(and(...conditions))
       .groupBy(tasks.status);
 

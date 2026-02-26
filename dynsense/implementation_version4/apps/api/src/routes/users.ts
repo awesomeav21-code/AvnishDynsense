@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import crypto from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, ilike } from "drizzle-orm";
 import { users, accounts } from "@dynsense/db";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
@@ -22,6 +22,30 @@ export async function userRoutes(app: FastifyInstance) {
       where: eq(users.tenantId, tenantId),
       columns: { id: true, email: true, name: true, role: true, status: true, createdAt: true },
     });
+    return { data: rows };
+  });
+
+  // GET /search — search users by name/email (for combobox dropdowns)
+  app.get("/search", async (request) => {
+    const { tenantId } = request.jwtPayload;
+    const { q, limit: rawLimit } = request.query as { q?: string; limit?: string };
+    const limit = Math.min(Number(rawLimit) || 20, 50);
+
+    const conditions = [eq(users.tenantId, tenantId)];
+    if (q && q.trim().length > 0) {
+      const pattern = `%${q.trim()}%`;
+      conditions.push(or(ilike(users.name, pattern), ilike(users.email, pattern))!);
+    }
+
+    const rows = await db.select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+      status: users.status,
+    }).from(users)
+      .where(and(...conditions))
+      .limit(limit);
     return { data: rows };
   });
 
@@ -84,7 +108,9 @@ export async function userRoutes(app: FastifyInstance) {
     if (!account) {
       // Create stub account for invited user
       const tempHash = crypto.randomBytes(32).toString("hex");
+      const uid = "DS-" + crypto.randomBytes(3).toString("hex").toUpperCase();
       const [created] = await db.insert(accounts).values({
+        uid,
         email: body.email,
         passwordHash: tempHash,
         name: body.name,

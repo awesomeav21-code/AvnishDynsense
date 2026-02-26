@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { UserSearchCombobox } from "@/components/user-search-combobox";
 
 interface Project {
   id: string;
@@ -22,6 +23,20 @@ interface Task {
   assigneeId: string | null;
   dueDate: string | null;
   projectId: string;
+}
+
+interface Phase {
+  id: string;
+  projectId: string;
+  name: string;
+  position: number;
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  archived: boolean;
 }
 
 const priorityColors: Record<string, string> = {
@@ -53,7 +68,6 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreateTask, setShowCreateTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [userRole, setUserRole] = useState<string>("");
 
   // Edit state
@@ -67,43 +81,162 @@ export default function ProjectDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // --- New task form state (matches my-tasks) ---
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPhaseId, setNewPhaseId] = useState("");
+  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newReportedBy, setNewReportedBy] = useState("");
+  const [newSprint, setNewSprint] = useState("R0");
+  const [newPriority, setNewPriority] = useState("medium");
+  const [newStartDate, setNewStartDate] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newEstimatedEffort, setNewEstimatedEffort] = useState("");
+  const [customPoints, setCustomPoints] = useState<number[]>([]);
+  const [customPointInput, setCustomPointInput] = useState("");
+  const [effortFocused, setEffortFocused] = useState(false);
+  const effortRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (effortRef.current && !effortRef.current.contains(e.target as Node)) {
+        setEffortFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+  const [newComment, setNewComment] = useState("");
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [subtaskInput, setSubtaskInput] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
+  const [phases, setPhases] = useState<Phase[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
+
   const canEdit = userRole === "site_admin" || userRole === "pm";
   const canDelete = userRole === "site_admin";
 
   useEffect(() => {
     async function load() {
       try {
-        const [projRes, tasksRes] = await Promise.all([
+        const [projRes, tasksRes, phasesRes, tagsRes, meRes] = await Promise.all([
           api.getProject(projectId),
           api.getTasks({ projectId }),
+          api.getPhases(projectId),
+          api.getTags(),
+          api.getMe(),
         ]);
         setProject(projRes.data);
         setTasks(tasksRes.data);
+        setPhases(phasesRes.data);
+        setTags(tagsRes.data.filter((t) => !t.archived));
+        setCurrentUser(meRes);
+        setUserRole(meRes.role);
+        setNewReportedBy(meRes.id);
       } catch {
         setError("Failed to load project");
-      }
-      try {
-        const meRes = await api.getMe();
-        setUserRole(meRes.role);
-      } catch {
-        setUserRole("site_admin");
+        try {
+          const meRes = await api.getMe();
+          setUserRole(meRes.role);
+        } catch {
+          setUserRole("site_admin");
+        }
       }
       setLoading(false);
     }
     load();
   }, [projectId]);
 
-  async function handleCreateTask() {
-    if (!newTaskTitle.trim()) return;
+  const resetTaskForm = useCallback(() => {
+    setNewTitle("");
+    setNewDescription("");
+    setNewPhaseId("");
+    setNewAssigneeId("");
+    setNewReportedBy(currentUser?.id ?? "");
+    setNewSprint("R0");
+    setNewPriority("medium");
+    setNewStartDate("");
+    setNewDueDate("");
+    setNewEstimatedEffort("");
+    setNewComment("");
+    setSubtasks([]);
+    setSubtaskInput("");
+    setSelectedTagIds(new Set());
+  }, [currentUser]);
+
+  const handleCreateTask = useCallback(async () => {
+    if (!newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0) return;
+    setCreating(true);
     try {
-      const res = await api.createTask({ projectId, title: newTaskTitle });
-      setTasks((prev) => [{ ...res.data, status: "created", priority: "medium", assigneeId: null, dueDate: null, projectId } as Task, ...prev]);
-      setNewTaskTitle("");
+      const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
+      const res = await api.createTask({
+        projectId,
+        title: newTitle.trim(),
+        description: newDescription.trim() || undefined,
+        priority: newPriority,
+        startDate: newStartDate || undefined,
+        dueDate: newDueDate || undefined,
+        estimatedEffort: effort && !isNaN(effort) ? effort : undefined,
+        phaseId: newPhaseId || undefined,
+        sprint: newSprint || undefined,
+        reportedBy: newReportedBy || undefined,
+      });
+
+      // Assign user if selected
+      if (newAssigneeId) {
+        await api.assignTask(res.data.id, newAssigneeId).catch(() => {});
+      }
+
+      // Create subtasks
+      if (subtasks.length > 0) {
+        await Promise.allSettled(
+          subtasks.map((title) =>
+            api.createTask({
+              projectId,
+              title,
+              priority: newPriority,
+              parentTaskId: res.data.id,
+            })
+          )
+        );
+      }
+
+      // Attach selected tags
+      if (selectedTagIds.size > 0) {
+        await Promise.allSettled(
+          Array.from(selectedTagIds).map((tagId) =>
+            api.addTagToTask(res.data.id, tagId)
+          )
+        );
+      }
+
+      // Post initial comment if provided
+      if (newComment.trim()) {
+        await api.addComment(res.data.id, newComment.trim()).catch(() => {});
+      }
+
+      setTasks((prev) => [
+        {
+          id: res.data.id,
+          title: newTitle.trim(),
+          status: "created",
+          priority: newPriority,
+          assigneeId: newAssigneeId || null,
+          dueDate: newDueDate || null,
+          projectId,
+        },
+        ...prev,
+      ]);
+      resetTaskForm();
       setShowCreateTask(false);
     } catch {
       setError("Failed to create task");
+    } finally {
+      setCreating(false);
     }
-  }
+  }, [projectId, newTitle, newDescription, newPriority, newStartDate, newDueDate, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, selectedTagIds, newComment, resetTaskForm]);
 
   function startEditing() {
     if (!project) return;
@@ -157,10 +290,18 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (error || !project) {
+  if (error && !project) {
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
         {error || "Project not found"}
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
+        Project not found
       </div>
     );
   }
@@ -178,6 +319,14 @@ export default function ProjectDetailPage() {
         <span>/</span>
         <span className="text-gray-900">{project.name}</span>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
+          {error}
+          <button onClick={() => setError("")} className="ml-2 text-red-400 hover:text-red-600">&times;</button>
+        </div>
+      )}
 
       {/* Project header */}
       <div className="bg-white rounded-lg border p-6">
@@ -312,37 +461,318 @@ export default function ProjectDetailPage() {
           {canEdit && (
             <button
               onClick={() => setShowCreateTask(true)}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90"
             >
-              + New Task
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Task
             </button>
           )}
         </div>
 
-        {/* Create task inline form */}
+        {/* Full create task form (matches my-tasks) */}
         {showCreateTask && (
-          <div className="bg-white rounded-lg border p-4 mb-4 space-y-3">
-            <input
-              type="text"
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              placeholder="Task title"
-              className="w-full px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleCreateTask}
-                disabled={!newTaskTitle.trim()}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-              >
-                Create
+          <div className="bg-white rounded-lg border p-4 mb-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Create New Task</h3>
+              <button onClick={() => { setShowCreateTask(false); resetTaskForm(); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
+            </div>
+
+            {/* Title */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Title <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                autoFocus
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { setShowCreateTask(false); resetTaskForm(); } }}
+                placeholder="Task title..."
+                className="w-full text-sm px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Description <span className="text-red-500">*</span></label>
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="Add details about this task..."
+                rows={3}
+                className="w-full text-xs px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 resize-none"
+              />
+            </div>
+
+            {/* Row 1: Project (read-only), Phase, Assignee */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Project</label>
+                <div className="w-full text-xs px-2 py-1.5 border rounded-md bg-gray-50 text-gray-700">
+                  {project.name}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Phase <span className="text-red-500">*</span></label>
+                <select
+                  value={newPhaseId}
+                  onChange={(e) => setNewPhaseId(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 border rounded-md"
+                >
+                  <option value="">No phase</option>
+                  {phases.map((ph) => (
+                    <option key={ph.id} value={ph.id}>{ph.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Assign To <span className="text-red-500">*</span></label>
+                <UserSearchCombobox
+                  value={newAssigneeId}
+                  onChange={setNewAssigneeId}
+                  currentUser={currentUser}
+                  placeholder="Search users..."
+                />
+              </div>
+            </div>
+
+            {/* Reported By */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Reported By <span className="text-red-500">*</span></label>
+              <UserSearchCombobox
+                value={newReportedBy}
+                onChange={setNewReportedBy}
+                currentUser={currentUser}
+                placeholder="Search users..."
+              />
+            </div>
+
+            {/* Sprint */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Sprint</label>
+              <select
+                value={newSprint}
+                onChange={(e) => setNewSprint(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 border rounded-md"
+              >
+                <option value="R0">R0</option>
+                <option value="R1">R1</option>
+              </select>
+            </div>
+
+            {/* Row 2: Priority, Start Date, Due Date, Estimated Effort */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Priority <span className="text-red-500">*</span></label>
+                <select
+                  value={newPriority}
+                  onChange={(e) => setNewPriority(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 border rounded-md"
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Start Date <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={newStartDate}
+                  onChange={(e) => setNewStartDate(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 border rounded-md"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Due Date <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={newDueDate}
+                  min={newStartDate || undefined}
+                  onChange={(e) => setNewDueDate(e.target.value)}
+                  className={`w-full text-xs px-2 py-1.5 border rounded-md ${
+                    newDueDate && newDueDate < new Date().toISOString().split("T")[0]!
+                      ? "border-red-400 text-red-600"
+                      : ""
+                  }`}
+                />
+                {newDueDate && newDueDate < new Date().toISOString().split("T")[0]! && (
+                  <span className="text-[10px] text-red-500 mt-0.5 block">Overdue</span>
+                )}
+              </div>
+              <div ref={effortRef}>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Estimated Effort (pts) <span className="text-red-500">*</span></label>
+                <div className="flex flex-wrap items-center gap-1">
+                  {[...new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...customPoints])].sort((a, b) => a - b).map((pt) => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => setNewEstimatedEffort(String(pt))}
+                      className={`w-7 h-7 text-xs font-medium rounded-md border transition-colors ${
+                        newEstimatedEffort === String(pt)
+                          ? "bg-ai text-white border-ai"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-ai/50 hover:text-ai"
+                      }`}
+                    >
+                      {pt}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={customPointInput}
+                    onChange={(e) => setCustomPointInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const val = parseFloat(customPointInput);
+                        if (val > 0) {
+                          if (![1,2,3,4,5,6,7,8,9,10].includes(val) && !customPoints.includes(val)) {
+                            setCustomPoints((prev) => [...prev, val]);
+                          }
+                          setNewEstimatedEffort(String(val));
+                          setCustomPointInput("");
+                        }
+                      }
+                    }}
+                    placeholder="+"
+                    className="w-7 h-7 text-xs text-center border border-dashed border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50 hover:border-ai/50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Tags <span className="text-red-500">*</span></label>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((tag) => {
+                    const isSelected = selectedTagIds.has(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTagIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(tag.id)) next.delete(tag.id);
+                            else next.add(tag.id);
+                            return next;
+                          });
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                          isSelected
+                            ? "border-transparent text-white"
+                            : "border-gray-200 text-gray-600 hover:border-gray-300"
+                        }`}
+                        style={isSelected ? { backgroundColor: tag.color } : undefined}
+                      >
+                        {!isSelected && (
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                        )}
+                        {tag.name}
+                        {isSelected && (
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Subtasks */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks <span className="text-red-500">*</span></label>
+              {subtasks.length > 0 && (
+                <div className="space-y-1 mb-2">
+                  {subtasks.map((st, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5 border">
+                      <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="flex-1 text-gray-700 truncate">{st}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={subtaskInput}
+                  onChange={(e) => setSubtaskInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && subtaskInput.trim()) {
+                      e.preventDefault();
+                      setSubtasks((prev) => [...prev, subtaskInput.trim()]);
+                      setSubtaskInput("");
+                    }
+                  }}
+                  placeholder="Add a subtask and press Enter..."
+                  className="flex-1 text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (subtaskInput.trim()) {
+                      setSubtasks((prev) => [...prev, subtaskInput.trim()]);
+                      setSubtaskInput("");
+                    }
+                  }}
+                  disabled={!subtaskInput.trim()}
+                  className="px-2 py-1.5 text-xs text-gray-600 border rounded-md hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {/* Comment Trail */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Comment Trail <span className="text-red-500">*</span></label>
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Add an initial comment to this task..."
+                rows={3}
+                className="w-full text-xs px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 resize-none"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">This will become the first comment on the task.</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end pt-1">
               <button
-                onClick={() => { setShowCreateTask(false); setNewTaskTitle(""); }}
-                className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50"
+                onClick={() => { setShowCreateTask(false); resetTaskForm(); }}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 border rounded-md hover:bg-gray-50 mr-2"
               >
                 Cancel
+              </button>
+              <button
+                onClick={handleCreateTask}
+                disabled={creating || !newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0}
+                className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
+              >
+                {creating ? "Creating..." : "Create Task"}
               </button>
             </div>
           </div>

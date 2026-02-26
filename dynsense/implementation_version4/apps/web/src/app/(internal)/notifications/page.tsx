@@ -64,6 +64,7 @@ export default function NotificationsPage() {
   const [sendMessage, setSendMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -80,6 +81,11 @@ export default function NotificationsPage() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  // Load current user ID
+  useEffect(() => {
+    api.getMe().then((me) => setCurrentUserId(me.id)).catch(() => {});
+  }, []);
 
   // Load users and tasks when send form opens
   useEffect(() => {
@@ -250,7 +256,7 @@ export default function NotificationsPage() {
                 className="w-full text-xs px-2 py-1.5 border rounded-md"
               >
                 <option value="">Select a team member</option>
-                {users.map((u) => (
+                {users.filter((u) => u.id !== currentUserId).map((u) => (
                   <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
                 ))}
               </select>

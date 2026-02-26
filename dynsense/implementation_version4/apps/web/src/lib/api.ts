@@ -40,6 +40,9 @@ class ApiClient {
           const err = await retry.json().catch(() => ({}));
           throw new ApiError(retry.status, err.message ?? "Request failed", err.error);
         }
+        if (retry.status === 204 || retry.headers.get("content-length") === "0") {
+          return undefined as T;
+        }
         return retry.json() as Promise<T>;
       }
       this.clearTokens();
@@ -50,6 +53,10 @@ class ApiClient {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new ApiError(res.status, err.message ?? "Request failed", err.error);
+    }
+
+    if (res.status === 204 || res.headers.get("content-length") === "0") {
+      return undefined as T;
     }
 
     return res.json() as Promise<T>;
@@ -229,6 +236,13 @@ class ApiClient {
     });
   }
 
+  updateComment(id: string, body: string) {
+    return this.request<{ data: { id: string; body: string; authorId: string; createdAt: string } }>(`/comments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body }),
+    });
+  }
+
   // Checklists
   getChecklists(taskId: string) {
     return this.request<{ data: Array<{ id: string; title: string; items: Array<{ id: string; label: string; completed: boolean }>; completionPercent: number }> }>(`/checklists/task/${taskId}`);
@@ -282,6 +296,11 @@ class ApiClient {
   // Users
   getUsers() {
     return this.request<{ data: Array<{ id: string; name: string; email: string; role: string; status: string }> }>("/users");
+  }
+
+  searchUsers(q: string, limit = 20) {
+    const query = new URLSearchParams({ q, limit: String(limit) });
+    return this.request<{ data: Array<{ id: string; name: string; email: string; role: string; status: string }> }>(`/users/search?${query}`);
   }
 
   inviteUser(data: { email: string; name: string; role?: string }) {
@@ -426,6 +445,10 @@ class ApiClient {
   // Tags (R1-6)
   getTags() {
     return this.request<{ data: Array<{ id: string; name: string; color: string; archived: boolean; isDefault: boolean; taskCount: number; createdAt: string }> }>("/tags");
+  }
+
+  getTagMappings() {
+    return this.request<{ data: Array<{ taskId: string; tagId: string; tagName: string; tagColor: string }> }>("/tags/mappings");
   }
 
   createTag(data: { name: string; color?: string }) {

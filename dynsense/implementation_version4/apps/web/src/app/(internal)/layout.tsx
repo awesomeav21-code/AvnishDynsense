@@ -25,8 +25,8 @@ const settingsNavItems = [
   { label: "General", href: "/settings", icon: "settings" },
   { label: "Priorities", href: "/settings/priorities", icon: "flag" },
   { label: "Tags", href: "/settings/tags", icon: "tag" },
-  { label: "Custom Fields", href: "/settings/custom-fields", icon: "settings" },
-  { label: "Recurring Tasks", href: "/settings/recurring-tasks", icon: "calendar" },
+  // { label: "Custom Fields", href: "/settings/custom-fields", icon: "settings" },
+  // { label: "Recurring Tasks", href: "/settings/recurring-tasks", icon: "calendar" },
 ];
 
 const iconMap: Record<string, React.ReactNode> = {

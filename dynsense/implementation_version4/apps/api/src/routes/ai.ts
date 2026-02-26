@@ -68,15 +68,21 @@ export async function aiRoutes(app: FastifyInstance) {
     for (const u of teamRows) userMap[u.id] = u.name;
 
     const statusCounts: Record<string, number> = {};
+    const priorityCounts: Record<string, number> = {};
     let overdueCount = 0;
     let dueSoonCount = 0;
+    let highPriorityActiveCount = 0;
     for (const t of taskRows) {
       statusCounts[t.status] = (statusCounts[t.status] ?? 0) + 1;
+      priorityCounts[t.priority] = (priorityCounts[t.priority] ?? 0) + 1;
       if (t.dueDate && new Date(t.dueDate) < now && t.status !== "completed" && t.status !== "cancelled") {
         overdueCount++;
       }
       if (t.dueDate && new Date(t.dueDate) >= now && new Date(t.dueDate) <= sevenDaysFromNow && t.status !== "completed" && t.status !== "cancelled") {
         dueSoonCount++;
+      }
+      if ((t.priority === "critical" || t.priority === "high") && t.status !== "completed" && t.status !== "cancelled") {
+        highPriorityActiveCount++;
       }
     }
 
@@ -99,6 +105,8 @@ export async function aiRoutes(app: FastifyInstance) {
         totalProjects: projectRows.length,
         totalTasks: taskRows.length,
         tasksByStatus: statusCounts,
+        tasksByPriority: priorityCounts,
+        highPriorityActiveTasks: highPriorityActiveCount,
         overdueTasks: overdueCount,
         dueSoonTasks: dueSoonCount,
       },

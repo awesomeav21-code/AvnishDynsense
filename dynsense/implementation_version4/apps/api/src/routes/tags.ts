@@ -62,6 +62,25 @@ export async function tagRoutes(app: FastifyInstance) {
     return { data: rows };
   });
 
+  // GET /mappings — all task-tag mappings for tenant
+  app.get("/mappings", async (request) => {
+    const { tenantId } = request.jwtPayload;
+
+    const rows = await db
+      .select({
+        taskId: taskTags.taskId,
+        tagId: tags.id,
+        tagName: tags.name,
+        tagColor: tags.color,
+      })
+      .from(taskTags)
+      .innerJoin(tags, eq(taskTags.tagId, tags.id))
+      .innerJoin(tasks, eq(taskTags.taskId, tasks.id))
+      .where(eq(tasks.tenantId, tenantId));
+
+    return { data: rows };
+  });
+
   // POST / — create a tag (admin + PM only)
   app.post("/", async (request, reply) => {
     const { tenantId, role } = request.jwtPayload;

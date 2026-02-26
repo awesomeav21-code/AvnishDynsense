@@ -60,6 +60,9 @@ export async function assignmentRoutes(app: FastifyInstance) {
       userId: body.userId,
     }).onConflictDoNothing();
 
+    // Also update the assigneeId on the task itself
+    await db.update(tasks).set({ assigneeId: body.userId }).where(eq(tasks.id, taskId));
+
     reply.status(201).send({ data: { taskId, userId: body.userId } });
   });
 
@@ -77,6 +80,12 @@ export async function assignmentRoutes(app: FastifyInstance) {
 
     await db.delete(taskAssignments)
       .where(and(eq(taskAssignments.taskId, taskId), eq(taskAssignments.userId, userId)));
+
+    // Clear assigneeId if the removed user was the current assignee
+    const task2 = await db.query.tasks.findFirst({ where: eq(tasks.id, taskId) });
+    if (task2 && task2.assigneeId === userId) {
+      await db.update(tasks).set({ assigneeId: null }).where(eq(tasks.id, taskId));
+    }
 
     reply.status(204).send();
   });

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
@@ -80,28 +81,38 @@ export default function DashboardPage() {
   const [whatsNext, setWhatsNext] = useState<WhatsNextTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState<{ type: "status" | "priority" | "activity"; value: string; label: string } | null>(null);
+  const pathname = usePathname();
+  const loadCount = useRef(0);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [projRes, statsRes, tasksRes, whatsNextRes] = await Promise.all([
-          api.getProjects(),
-          api.getTaskStats(),
-          api.getTasks({ limit: 500 }),
-          api.getWhatsNext().catch(() => ({ data: [] as WhatsNextTask[] })),
-        ]);
-        setProjects(projRes.data);
-        setTaskStats(statsRes.data);
-        setAllTasks(tasksRes.data as unknown as FullTask[]);
-        setWhatsNext(whatsNextRes.data);
-      } catch {
-        setError("Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [projRes, statsRes, tasksRes, whatsNextRes] = await Promise.all([
+        api.getProjects(),
+        api.getTaskStats(),
+        api.getTasks({ limit: 500 }),
+        api.getWhatsNext().catch(() => ({ data: [] as WhatsNextTask[] })),
+      ]);
+      setProjects(projRes.data);
+      setTaskStats(statsRes.data);
+      setAllTasks(tasksRes.data as unknown as FullTask[]);
+      setWhatsNext(whatsNextRes.data);
+    } catch {
+      setError("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  // Re-fetch every time user navigates to this page (pathname changes trigger this)
+  useEffect(() => {
+    if (pathname === "/dashboard") {
+      // Skip showing loading spinner on subsequent loads to avoid flicker
+      if (loadCount.current > 0) setLoading(false);
+      loadDashboard();
+      loadCount.current++;
+    }
+  }, [pathname, loadDashboard]);
 
   const totalTasks = taskStats.reduce((sum, s) => sum + s.count, 0);
   const completedTasks = taskStats.find((s) => s.status === "completed")?.count ?? 0;
@@ -154,6 +165,7 @@ export default function DashboardPage() {
       {/* Charts */}
       {totalTasks > 0 && (() => {
         const pieData = taskStats.map((s) => ({
+          key: s.status,
           name: s.status.replace("_", " "),
           value: s.count,
           color: STATUS_CHART_COLORS[s.status] ?? "#9CA3AF",
@@ -164,6 +176,7 @@ export default function DashboardPage() {
           return acc;
         }, {});
         const priorityPieData = Object.entries(priorityCounts).map(([priority, count]) => ({
+          key: priority,
           name: priority,
           value: count,
           color: PRIORITY_CHART_COLORS[priority] ?? "#9CA3AF",
@@ -173,7 +186,7 @@ export default function DashboardPage() {
         const dayMs = 86400000;
         const days = 7;
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        const lineData: Array<{ date: string; created: number; completed: number }> = [];
+        const lineData: Array<{ date: string; created: number; completed: number; _dayStart: number; _dayEnd: number }> = [];
         for (let i = days - 1; i >= 0; i--) {
           const dayStart = todayStart - i * dayMs;
           const dayEnd = dayStart + dayMs;
@@ -187,13 +200,34 @@ export default function DashboardPage() {
             const d = new Date(t.completedAt).getTime();
             return d >= dayStart && d < dayEnd;
           }).length;
-          lineData.push({ date: label, created, completed });
+          lineData.push({ date: label, created, completed, _dayStart: dayStart, _dayEnd: dayEnd });
+        }
+
+        // Filter tasks based on selected chart filter
+        let filteredTasks: FullTask[] = [];
+        if (selectedFilter) {
+          if (selectedFilter.type === "status") {
+            filteredTasks = allTasks.filter((t) => t.status === selectedFilter.value);
+          } else if (selectedFilter.type === "priority") {
+            filteredTasks = allTasks.filter((t) => t.priority === selectedFilter.value);
+          } else if (selectedFilter.type === "activity") {
+            const day = lineData.find((d) => d.date === selectedFilter.value);
+            if (day) {
+              filteredTasks = allTasks.filter((t) => {
+                const created = new Date(t.createdAt).getTime();
+                const completed = t.completedAt ? new Date(t.completedAt).getTime() : 0;
+                return (created >= day._dayStart && created < day._dayEnd) ||
+                       (completed >= day._dayStart && completed < day._dayEnd);
+              });
+            }
+          }
         }
 
         return (
+          <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Status pie chart */}
-            <div className="bg-white rounded-lg border p-4">
+            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "status" ? "ring-2 ring-ai/30" : ""}`}>
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Status</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -206,9 +240,23 @@ export default function DashboardPage() {
                     innerRadius={45}
                     outerRadius={75}
                     paddingAngle={2}
+                    cursor="pointer"
+                    onClick={(_: unknown, index: number) => {
+                      const entry = pieData[index]!;
+                      setSelectedFilter((prev) =>
+                        prev?.type === "status" && prev.value === entry.key
+                          ? null
+                          : { type: "status", value: entry.key, label: `Status: ${entry.name}` }
+                      );
+                    }}
                   >
                     {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
+                      <Cell
+                        key={i}
+                        fill={entry.color}
+                        stroke={selectedFilter?.type === "status" && selectedFilter.value === entry.key ? "#1e293b" : "none"}
+                        strokeWidth={selectedFilter?.type === "status" && selectedFilter.value === entry.key ? 2 : 0}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
@@ -224,7 +272,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Priority pie chart */}
-            <div className="bg-white rounded-lg border p-4">
+            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "priority" ? "ring-2 ring-ai/30" : ""}`}>
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Priority</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -237,9 +285,23 @@ export default function DashboardPage() {
                     innerRadius={45}
                     outerRadius={75}
                     paddingAngle={2}
+                    cursor="pointer"
+                    onClick={(_: unknown, index: number) => {
+                      const entry = priorityPieData[index]!;
+                      setSelectedFilter((prev) =>
+                        prev?.type === "priority" && prev.value === entry.key
+                          ? null
+                          : { type: "priority", value: entry.key, label: `Priority: ${entry.name}` }
+                      );
+                    }}
                   >
                     {priorityPieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
+                      <Cell
+                        key={i}
+                        fill={entry.color}
+                        stroke={selectedFilter?.type === "priority" && selectedFilter.value === entry.key ? "#1e293b" : "none"}
+                        strokeWidth={selectedFilter?.type === "priority" && selectedFilter.value === entry.key ? 2 : 0}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
@@ -255,10 +317,21 @@ export default function DashboardPage() {
             </div>
 
             {/* Activity bar chart */}
-            <div className="bg-white rounded-lg border p-4">
+            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "activity" ? "ring-2 ring-ai/30" : ""}`}>
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Activity (Last 7 Days)</h3>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={lineData}>
+                <BarChart
+                  data={lineData}
+                  onClick={(state) => {
+                    if (state?.activeLabel) {
+                      setSelectedFilter((prev) =>
+                        prev?.type === "activity" && prev.value === state.activeLabel
+                          ? null
+                          : { type: "activity", value: state.activeLabel!, label: `Activity on ${state.activeLabel}` }
+                      );
+                    }
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                   <XAxis
                     dataKey="date"
@@ -272,13 +345,65 @@ export default function DashboardPage() {
                     width={30}
                   />
                   <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px" }} />
-                  <Bar dataKey="created" fill="#6366F1" radius={[3, 3, 0, 0]} name="Created" />
-                  <Bar dataKey="completed" fill="#22C55E" radius={[3, 3, 0, 0]} name="Completed" />
+                  <Bar dataKey="created" fill="#6366F1" radius={[3, 3, 0, 0]} name="Created" cursor="pointer" />
+                  <Bar dataKey="completed" fill="#22C55E" radius={[3, 3, 0, 0]} name="Completed" cursor="pointer" />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: "10px" }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
+
+          {/* Filtered task list panel */}
+          {selectedFilter && (
+            <div className="bg-white rounded-lg border">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold">{selectedFilter.label}</h3>
+                  <span className="text-xs text-gray-400">{filteredTasks.length} tasks</span>
+                </div>
+                <button
+                  onClick={() => setSelectedFilter(null)}
+                  className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+              {filteredTasks.length === 0 ? (
+                <div className="p-6 text-center text-xs text-gray-500">No tasks match this filter.</div>
+              ) : (
+                <div className="divide-y max-h-80 overflow-y-auto">
+                  {filteredTasks.map((task) => {
+                    const { text: dueDateText, isOverdue } = formatDueDate(task.dueDate, now);
+                    return (
+                      <Link
+                        key={task.id}
+                        href={`/tasks/${task.id}`}
+                        className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="text-xs font-medium text-gray-900 truncate mr-3">{task.title}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                            STATUS_CHART_COLORS[task.status]
+                              ? `text-white`
+                              : "bg-gray-100 text-gray-600"
+                          }`} style={{ backgroundColor: STATUS_CHART_COLORS[task.status] }}>
+                            {task.status.replace("_", " ")}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${priorityColors[task.priority] ?? "bg-gray-100 text-gray-600"}`}>
+                            {task.priority}
+                          </span>
+                          <span className={`text-[10px] ${isOverdue ? "text-red-600 font-medium" : "text-gray-400"}`}>
+                            {dueDateText}
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          </>
         );
       })()}
 

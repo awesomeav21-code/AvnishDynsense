@@ -54,9 +54,12 @@ export default function DependenciesPage() {
         for (const task of res.data) {
           try {
             const depRes = await api.getDependencies(task.id);
-            allDeps.push(...depRes.data);
-          } catch { /* skip */ }
+            if (depRes.data) allDeps.push(...depRes.data);
+          } catch (err) {
+            console.error(`Failed to fetch dependencies for task ${task.id}:`, err);
+          }
         }
+        console.log(`[DependencyGraph] Found ${allDeps.length} raw deps for ${res.data.length} tasks`);
         setDeps(Array.from(new Map(allDeps.map(d => [d.id, d])).values()));
       })
       .finally(() => setLoading(false));
@@ -226,14 +229,6 @@ export default function DependenciesPage() {
       ) : (
         <div className="bg-white rounded-lg border overflow-auto">
           <svg width={graph.svgW} height={graph.svgH}>
-            <defs>
-              <marker id="ah" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" fill="#64748b" />
-              </marker>
-              <marker id="ah-hl" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
-                <polygon points="0 0, 10 4, 0 8" fill="#2563eb" />
-              </marker>
-            </defs>
 
             {/* Separator between linked and standalone */}
             {graph.standaloneIds.length > 0 && graph.connectedIds.size > 0 && (
@@ -262,6 +257,8 @@ export default function DependenciesPage() {
               const key = `${edge.from}-${edge.to}`;
               const hl = hlEdges.has(key);
               const dimmed = hoveredNode && !hl;
+              const color = hl ? "#2563eb" : "#94a3b8";
+              const sw = hl ? 3 : 2;
 
               const dx = x2 - x1;
               let d: string;
@@ -269,22 +266,37 @@ export default function DependenciesPage() {
                 const cx = dx * 0.4;
                 d = `M${x1},${y1} C${x1 + cx},${y1} ${x2 - cx},${y2} ${x2},${y2}`;
               } else {
-                // backwards/same-column: arc above
                 const midY = Math.min(y1, y2) - 60;
                 d = `M${x1},${y1} C${x1 + 60},${midY} ${x2 - 60},${midY} ${x2},${y2}`;
               }
 
+              // Calculate arrowhead at endpoint
+              // Get tangent direction near the end of the curve for arrow orientation
+              const ax = x2;
+              const ay = y2;
+              const arrowLen = 10;
+              const arrowW = 5;
+              // Approximate tangent: from a point slightly before endpoint
+              let tx: number, ty: number;
+              if (dx > 30) {
+                const cx2 = dx * 0.4;
+                tx = x2 - cx2 * 0.1;
+                ty = y2;
+              } else {
+                tx = x2 - 60 * 0.1;
+                ty = Math.min(y1, y2) - 60 + (y2 - (Math.min(y1, y2) - 60)) * 0.9;
+              }
+              const angle = Math.atan2(ay - ty, ax - tx);
+              const p1x = ax - arrowLen * Math.cos(angle) + arrowW * Math.sin(angle);
+              const p1y = ay - arrowLen * Math.sin(angle) - arrowW * Math.cos(angle);
+              const p2x = ax - arrowLen * Math.cos(angle) - arrowW * Math.sin(angle);
+              const p2y = ay - arrowLen * Math.sin(angle) + arrowW * Math.cos(angle);
+
               return (
-                <path
-                  key={key}
-                  d={d}
-                  fill="none"
-                  stroke={hl ? "#2563eb" : "#94a3b8"}
-                  strokeWidth={hl ? 3 : 2}
-                  markerEnd={hl ? "url(#ah-hl)" : "url(#ah)"}
-                  opacity={dimmed ? 0.15 : 1}
-                  className="transition-all duration-200"
-                />
+                <g key={key} opacity={dimmed ? 0.15 : 1} className="transition-all duration-200">
+                  <path d={d} fill="none" stroke={color} strokeWidth={sw} />
+                  <polygon points={`${ax},${ay} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />
+                </g>
               );
             })}
 

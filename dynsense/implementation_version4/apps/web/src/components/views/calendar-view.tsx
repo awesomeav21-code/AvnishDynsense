@@ -43,7 +43,7 @@ function formatMonthYear(year: number, month: number): string {
 }
 
 function dateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function getWeekDates(date: Date): Date[] {
@@ -119,7 +119,8 @@ export function CalendarView() {
     return map;
   }, [tasks]);
 
-  const todayKey = dateKey(new Date());
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   function prevPeriod() {
     if (view === "month") {
@@ -157,11 +158,12 @@ export function CalendarView() {
   async function handleQuickCreate() {
     if (!quickTitle.trim() || !quickProjectId || !quickCreateDate) return;
     setCreating(true);
+    const dueDateValue = `${quickCreateDate}T12:00:00.000Z`;
     try {
       const res = await api.createTask({
         projectId: quickProjectId,
         title: quickTitle.trim(),
-        dueDate: quickCreateDate,
+        dueDate: dueDateValue,
       });
       setTasks((prev) => [...prev, {
         id: res.data.id,
@@ -169,7 +171,7 @@ export function CalendarView() {
         status: "created",
         priority: "medium",
         assigneeId: null,
-        dueDate: quickCreateDate,
+        dueDate: dueDateValue,
         projectId: quickProjectId,
       }]);
       setQuickCreateDate(null);
@@ -191,10 +193,11 @@ export function CalendarView() {
       setDragTaskId(null);
       return;
     }
-    setTasks((prev) => prev.map((t) => t.id === dragTaskId ? { ...t, dueDate: targetDateKey } : t));
+    const dueDateValue = `${targetDateKey}T12:00:00.000Z`;
+    setTasks((prev) => prev.map((t) => t.id === dragTaskId ? { ...t, dueDate: dueDateValue } : t));
     setDragTaskId(null);
     try {
-      await api.updateTask(dragTaskId, { dueDate: targetDateKey });
+      await api.updateTask(dragTaskId, { dueDate: dueDateValue });
     } catch {
       setTasks((prev) => prev.map((t) => t.id === dragTaskId ? { ...t, dueDate: oldDate } : t));
       setError("Failed to reschedule task");
@@ -335,22 +338,25 @@ export function CalendarView() {
                       )}
 
                       <div className="space-y-0.5">
-                        {dayTasks.slice(0, 3).map((task) => (
+                        {dayTasks.slice(0, 3).map((task) => {
+                          const isOverdue = cell.key < todayKey && task.status !== "completed" && task.status !== "cancelled";
+                          return (
                           <Link
                             key={task.id}
-                            href={`/tasks/${task.id}`}
+                            href={`/tasks/${task.id}?from=calendar`}
                             draggable={canEdit}
                             onDragStart={canEdit ? (e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
                             onDragEnd={canEdit ? () => { setDragTaskId(null); setDropTargetKey(null); } : undefined}
                             className={`flex items-center gap-1 group ${dragTaskId === task.id ? "opacity-40" : ""}`}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${priorityDotColors[task.priority] ?? "bg-gray-400"}`} />
-                            <span className="text-[10px] text-gray-700 truncate group-hover:text-ai transition-colors">
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOverdue ? "bg-red-500" : (priorityDotColors[task.priority] ?? "bg-gray-400")}`} />
+                            <span className={`text-[10px] truncate transition-colors ${isOverdue ? "text-red-600 group-hover:text-red-800" : "text-gray-700 group-hover:text-ai"}`}>
                               {task.title}
                             </span>
                           </Link>
-                        ))}
+                          );
+                        })}
                         {dayTasks.length > 3 && (
                           <span className="text-[10px] text-gray-400 pl-3">+{dayTasks.length - 3} more</span>
                         )}
@@ -422,10 +428,12 @@ export function CalendarView() {
                   )}
 
                   <div className="space-y-1">
-                    {dayTasks.map((task) => (
+                    {dayTasks.map((task) => {
+                      const isOverdue = key < todayKey && task.status !== "completed" && task.status !== "cancelled";
+                      return (
                       <Link
                         key={task.id}
-                        href={`/tasks/${task.id}`}
+                        href={`/tasks/${task.id}?from=calendar`}
                         draggable={canEdit}
                         onDragStart={canEdit ? (e) => { e.stopPropagation(); setDragTaskId(task.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
                         onDragEnd={canEdit ? () => { setDragTaskId(null); setDropTargetKey(null); } : undefined}
@@ -433,15 +441,18 @@ export function CalendarView() {
                         className={`block px-1.5 py-1 rounded text-[10px] border transition-colors hover:border-ai/50 ${
                           task.status === "completed"
                             ? "bg-green-50 border-green-200 text-green-700 line-through"
-                            : "bg-white border-gray-200 text-gray-700"
+                            : isOverdue
+                              ? "bg-red-50 border-red-200 text-red-600"
+                              : "bg-white border-gray-200 text-gray-700"
                         } ${dragTaskId === task.id ? "opacity-40" : ""}`}
                       >
                         <div className="flex items-center gap-1">
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${priorityDotColors[task.priority] ?? "bg-gray-400"}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOverdue ? "bg-red-500" : (priorityDotColors[task.priority] ?? "bg-gray-400")}`} />
                           <span className="truncate">{task.title}</span>
                         </div>
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

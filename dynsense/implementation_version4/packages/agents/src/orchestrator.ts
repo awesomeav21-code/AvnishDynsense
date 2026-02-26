@@ -558,12 +558,25 @@ export class AIOrchestrator {
         ].join("\n");
 
       case "nl_query": {
+        const context = input["context"] as Record<string, unknown> | undefined;
         const parts = [
-          "Answer the following question about the project:",
+          "Answer the following question using ONLY the data provided below.",
           "",
-          `Question: ${String(input["query"] ?? "No query provided")}`,
+          `QUESTION: ${String(input["query"] ?? "No query provided")}`,
           "",
-          `Project context: ${JSON.stringify(input["context"] ?? {})}`,
+          "=== DATA START ===",
+          "",
+          `Current date: ${context?.["currentDate"] ?? "unknown"}`,
+          "",
+          `Summary: ${JSON.stringify(context?.["summary"] ?? {})}`,
+          "",
+          `Projects (${((context?.["projects"] as unknown[]) ?? []).length} total): ${JSON.stringify(context?.["projects"] ?? [])}`,
+          "",
+          `Team members (${((context?.["team"] as unknown[]) ?? []).length} total): ${JSON.stringify(context?.["team"] ?? [])}`,
+          "",
+          `Tasks (${((context?.["tasks"] as unknown[]) ?? []).length} total): ${JSON.stringify(context?.["tasks"] ?? [])}`,
+          "",
+          "=== DATA END ===",
         ];
         // FR-3011: Inject multi-turn session context for conversational continuity
         if (sessionContext?.lastOutput) {
@@ -572,7 +585,8 @@ export class AIOrchestrator {
           parts.push("Use the above context to maintain conversational continuity.");
         }
         parts.push("");
-        parts.push("Return as JSON: { answer: string, sources: string[], confidence: number }");
+        parts.push("IMPORTANT: Count and compute from the actual tasks array above. Do not estimate or guess.");
+        parts.push("Return as JSON: { \"answer\": string, \"sources\": string[], \"confidence\": number }");
         return parts.join("\n");
       }
 

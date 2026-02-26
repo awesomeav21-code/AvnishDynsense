@@ -8,6 +8,7 @@ import { KanbanView } from "@/components/views/kanban-view";
 import { CalendarView } from "@/components/views/calendar-view";
 import { TableView } from "@/components/views/table-view";
 import { TimelineView } from "@/components/views/timeline-view";
+import { UserSearchCombobox } from "@/components/user-search-combobox";
 
 interface Task {
   id: string;
@@ -80,13 +81,6 @@ interface Phase {
   position: number;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
-
 interface Tag {
   id: string;
   name: string;
@@ -113,8 +107,18 @@ function MyTasksContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const highlightParam = searchParams.get("highlight");
+  const viewParam = searchParams.get("view") as ViewMode | null;
 
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewModeState] = useState<ViewMode>(
+    viewParam && ["list", "kanban", "calendar", "table", "timeline"].includes(viewParam) ? viewParam : "list"
+  );
+
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeState(mode);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", mode);
+    router.replace(`/my-tasks?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +131,9 @@ function MyTasksContent() {
   const highlightRef = useRef<HTMLDivElement>(null);
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const [expandedOverdue, setExpandedOverdue] = useState(false);
+  const [expandedCritical, setExpandedCritical] = useState(false);
+  const [expandedHigh, setExpandedHigh] = useState(false);
 
   // New task form state
   const [showNewTask, setShowNewTask] = useState(false);
@@ -137,11 +144,25 @@ function MyTasksContent() {
   const [newDueDate, setNewDueDate] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newEstimatedEffort, setNewEstimatedEffort] = useState("");
+  const [customPoints, setCustomPoints] = useState<number[]>([]);
+  const [customPointInput, setCustomPointInput] = useState("");
+  const [effortFocused, setEffortFocused] = useState(false);
+  const effortRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (effortRef.current && !effortRef.current.contains(e.target as Node)) {
+        setEffortFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const [newAssigneeId, setNewAssigneeId] = useState("");
   const [newPhaseId, setNewPhaseId] = useState("");
   const [newSprint, setNewSprint] = useState("R0");
   const [creating, setCreating] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -155,14 +176,12 @@ function MyTasksContent() {
     Promise.all([
       api.getTasks({ limit: 200 }),
       api.getProjects(),
-      api.getUsers(),
       api.getMe(),
       api.getTags(),
     ])
-      .then(([tasksRes, projectsRes, usersRes, meRes, tagsRes]) => {
+      .then(([tasksRes, projectsRes, meRes, tagsRes]) => {
         setTasks(tasksRes.data);
         setProjects(projectsRes.data);
-        setUsers(usersRes.data.filter((u) => u.status !== "deactivated"));
         setCurrentUser(meRes);
         setNewReportedBy(meRes.id);
         setTags(tagsRes.data.filter((t) => !t.archived));
@@ -216,7 +235,7 @@ function MyTasksContent() {
   }, [highlightParam, loading, router]);
 
   const handleCreateTask = useCallback(async () => {
-    if (!newTitle.trim() || !newProjectId) return;
+    if (!newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0) return;
     setCreating(true);
     try {
       const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
@@ -322,9 +341,13 @@ function MyTasksContent() {
   const projectFiltered = filterProjectId === "all" ? tasks : tasks.filter((t) => t.projectId === filterProjectId);
   const filtered = filterStatus === "all" ? projectFiltered : projectFiltered.filter((t) => t.status === filterStatus);
 
-  const urgentTasks = projectFiltered.filter((t) =>
+  const criticalTasks = projectFiltered.filter((t) =>
     t.status !== "completed" && t.status !== "cancelled" &&
-    (t.priority === "critical" || t.priority === "high")
+    t.priority === "critical"
+  );
+  const highPriorityTasks = projectFiltered.filter((t) =>
+    t.status !== "completed" && t.status !== "cancelled" &&
+    t.priority === "high"
   );
   const overdueTasks = projectFiltered.filter((t) =>
     t.status !== "completed" && t.status !== "cancelled" &&
@@ -379,7 +402,7 @@ function MyTasksContent() {
 
           {/* Title */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Title *</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Title <span className="text-red-500">*</span></label>
             <input
               type="text"
               autoFocus
@@ -393,7 +416,7 @@ function MyTasksContent() {
 
           {/* Description */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Description</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Description <span className="text-red-500">*</span></label>
             <textarea
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
@@ -406,7 +429,7 @@ function MyTasksContent() {
           {/* Row 1: Project, Phase, Assignee */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Project *</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Project <span className="text-red-500">*</span></label>
               <select
                 value={newProjectId}
                 onChange={(e) => { setNewProjectId(e.target.value); setNewPhaseId(""); }}
@@ -419,7 +442,7 @@ function MyTasksContent() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Phase</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Phase <span className="text-red-500">*</span></label>
               <select
                 value={newPhaseId}
                 onChange={(e) => setNewPhaseId(e.target.value)}
@@ -432,38 +455,25 @@ function MyTasksContent() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Assign To</label>
-              <select
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Assign To <span className="text-red-500">*</span></label>
+              <UserSearchCombobox
                 value={newAssigneeId}
-                onChange={(e) => setNewAssigneeId(e.target.value)}
-                className="w-full text-xs px-2 py-1.5 border rounded-md"
-              >
-                <option value="">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+                onChange={setNewAssigneeId}
+                currentUser={currentUser}
+                placeholder="Search users..."
+              />
             </div>
           </div>
 
           {/* Reported By */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Reported By</label>
-            <select
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Reported By <span className="text-red-500">*</span></label>
+            <UserSearchCombobox
               value={newReportedBy}
-              onChange={(e) => setNewReportedBy(e.target.value)}
-              className="w-full text-xs px-2 py-1.5 border rounded-md"
-            >
-              {Array.from(new Map(users.map((u) => [u.name, u])).values()).map((u) => (
-                <option
-                  key={u.id}
-                  value={u.id}
-                  className={u.id === currentUser?.id ? "bg-gray-200 font-medium" : ""}
-                >
-                  {u.name}{u.id === currentUser?.id ? " (You)" : ""}
-                </option>
-              ))}
-            </select>
+              onChange={setNewReportedBy}
+              currentUser={currentUser}
+              placeholder="Search users..."
+            />
           </div>
 
           {/* Sprint */}
@@ -482,7 +492,7 @@ function MyTasksContent() {
           {/* Row 2: Priority, Start Date, Due Date, Estimated Effort */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Priority</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Priority <span className="text-red-500">*</span></label>
               <select
                 value={newPriority}
                 onChange={(e) => setNewPriority(e.target.value)}
@@ -495,7 +505,7 @@ function MyTasksContent() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Start Date</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Start Date <span className="text-red-500">*</span></label>
               <input
                 type="date"
                 value={newStartDate}
@@ -504,7 +514,7 @@ function MyTasksContent() {
               />
             </div>
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Due Date</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Due Date <span className="text-red-500">*</span></label>
               <input
                 type="date"
                 value={newDueDate}
@@ -520,26 +530,53 @@ function MyTasksContent() {
                 <span className="text-[10px] text-red-500 mt-0.5 block">Overdue</span>
               )}
             </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Estimated Effort (hrs)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={newEstimatedEffort}
-                onChange={(e) => setNewEstimatedEffort(e.target.value)}
-                placeholder="e.g. 4"
-                className="w-full text-xs px-2 py-1.5 border rounded-md"
-              />
+            <div ref={effortRef}>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Estimated Effort (pts) <span className="text-red-500">*</span></label>
+              <div className="flex flex-wrap items-center gap-1">
+                {[...new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...customPoints])].sort((a, b) => a - b).map((pt) => (
+                  <button
+                    key={pt}
+                    type="button"
+                    onClick={() => setNewEstimatedEffort(String(pt))}
+                    className={`w-7 h-7 text-xs font-medium rounded-md border transition-colors ${
+                      newEstimatedEffort === String(pt)
+                        ? "bg-ai text-white border-ai"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-ai/50 hover:text-ai"
+                    }`}
+                  >
+                    {pt}
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={customPointInput}
+                  onChange={(e) => setCustomPointInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = parseFloat(customPointInput);
+                      if (val > 0) {
+                        if (![1,2,3,4,5,6,7,8,9,10].includes(val) && !customPoints.includes(val)) {
+                          setCustomPoints((prev) => [...prev, val]);
+                        }
+                        setNewEstimatedEffort(String(val));
+                        setCustomPointInput("");
+                      }
+                    }
+                  }}
+                  placeholder="+"
+                  className="w-7 h-7 text-xs text-center border border-dashed border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50 hover:border-ai/50"
+                />
+              </div>
             </div>
           </div>
 
           {/* Tags */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Tags</label>
-            {tags.length === 0 ? (
-              <p className="text-xs text-gray-400">No tags available. Create tags in Settings.</p>
-            ) : (
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Tags <span className="text-red-500">*</span></label>
+            {tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((tag) => {
                   const isSelected = selectedTagIds.has(tag.id);
@@ -580,7 +617,7 @@ function MyTasksContent() {
 
           {/* Subtasks */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks <span className="text-red-500">*</span></label>
             {subtasks.length > 0 && (
               <div className="space-y-1 mb-2">
                 {subtasks.map((st, idx) => (
@@ -635,7 +672,7 @@ function MyTasksContent() {
 
           {/* Comment Trail */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Comment Trail</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Comment Trail <span className="text-red-500">*</span></label>
             <textarea
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
@@ -656,7 +693,7 @@ function MyTasksContent() {
             </button>
             <button
               onClick={handleCreateTask}
-              disabled={creating || !newTitle.trim() || !newProjectId}
+              disabled={creating || !newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0}
               className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
             >
               {creating ? "Creating..." : "Create Task"}
@@ -690,28 +727,51 @@ function MyTasksContent() {
               )}
 
               {/* What's Next cards */}
-              {(urgentTasks.length > 0 || overdueTasks.length > 0) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(criticalTasks.length > 0 || highPriorityTasks.length > 0 || overdueTasks.length > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {overdueTasks.length > 0 && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                       <h3 className="text-xs font-semibold text-red-700 mb-2">Overdue ({overdueTasks.length})</h3>
-                      {overdueTasks.slice(0, 3).map((t) => (
+                      {(expandedOverdue ? overdueTasks : overdueTasks.slice(0, 3)).map((t) => (
                         <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
                           {t.title}
                         </Link>
                       ))}
-                      {overdueTasks.length > 3 && <span className="text-xs text-red-400">+{overdueTasks.length - 3} more</span>}
+                      {overdueTasks.length > 3 && (
+                        <button onClick={() => setExpandedOverdue((v) => !v)} className="text-xs text-red-400 hover:text-red-600 mt-1 cursor-pointer">
+                          {expandedOverdue ? "Show less" : `+${overdueTasks.length - 3} more`}
+                        </button>
+                      )}
                     </div>
                   )}
-                  {urgentTasks.length > 0 && (
+                  {criticalTasks.length > 0 && (
+                    <div className="bg-red-50/70 border border-red-300 rounded-lg p-4">
+                      <h3 className="text-xs font-semibold text-red-700 mb-2">Critical Priority ({criticalTasks.length})</h3>
+                      {(expandedCritical ? criticalTasks : criticalTasks.slice(0, 3)).map((t) => (
+                        <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
+                          {t.title}
+                        </Link>
+                      ))}
+                      {criticalTasks.length > 3 && (
+                        <button onClick={() => setExpandedCritical((v) => !v)} className="text-xs text-red-400 hover:text-red-600 mt-1 cursor-pointer">
+                          {expandedCritical ? "Show less" : `+${criticalTasks.length - 3} more`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {highPriorityTasks.length > 0 && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <h3 className="text-xs font-semibold text-orange-700 mb-2">High Priority ({urgentTasks.length})</h3>
-                      {urgentTasks.slice(0, 3).map((t) => (
+                      <h3 className="text-xs font-semibold text-orange-700 mb-2">High Priority ({highPriorityTasks.length})</h3>
+                      {(expandedHigh ? highPriorityTasks : highPriorityTasks.slice(0, 3)).map((t) => (
                         <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-orange-600 hover:text-orange-800 truncate py-0.5">
                           {t.title}
                         </Link>
                       ))}
-                      {urgentTasks.length > 3 && <span className="text-xs text-orange-400">+{urgentTasks.length - 3} more</span>}
+                      {highPriorityTasks.length > 3 && (
+                        <button onClick={() => setExpandedHigh((v) => !v)} className="text-xs text-orange-400 hover:text-orange-600 mt-1 cursor-pointer">
+                          {expandedHigh ? "Show less" : `+${highPriorityTasks.length - 3} more`}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
