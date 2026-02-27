@@ -35,11 +35,24 @@ export async function phaseRoutes(app: FastifyInstance) {
       throw AppError.badRequest("projectId query parameter is required");
     }
 
-    const rows = await db
+    let rows = await db
       .select()
       .from(phases)
       .where(and(eq(phases.tenantId, tenantId), eq(phases.projectId, projectId)))
       .orderBy(asc(phases.position));
+
+    // Auto-create default phases if project has none
+    if (rows.length === 0) {
+      const defaultPhases = ["Discovery", "Development", "Testing", "Deployment"];
+      rows = await db.insert(phases).values(
+        defaultPhases.map((name, i) => ({
+          tenantId,
+          projectId,
+          name,
+          position: i,
+        }))
+      ).returning();
+    }
 
     return { data: rows };
   });

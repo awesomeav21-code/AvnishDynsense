@@ -857,14 +857,12 @@ export default function TaskDetailPage() {
                         <p className="text-gray-700">{c.body}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-gray-400">{new Date(c.createdAt).toLocaleString()}</span>
-                          {c.authorId === currentUserId && (
-                            <button
-                              onClick={() => { setEditingCommentId(c.id); setEditCommentBody(c.body); }}
-                              className="text-gray-400 hover:text-gray-600"
-                            >
-                              Edit
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setEditingCommentId(c.id); setEditCommentBody(c.body); }}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            Edit
+                          </button>
                         </div>
                       </>
                     )}

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNull } from "drizzle-orm";
-import { projects } from "@dynsense/db";
+import { projects, phases } from "@dynsense/db";
 import { createProjectSchema, updateProjectSchema, projectIdParamSchema } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
@@ -38,6 +38,17 @@ export async function projectRoutes(app: FastifyInstance) {
       startDate: body.startDate ? new Date(body.startDate) : undefined,
       endDate: body.endDate ? new Date(body.endDate) : undefined,
     }).returning();
+
+    // Auto-create default phases for every new project
+    const defaultPhases = ["Discovery", "Development", "Testing", "Deployment"];
+    await db.insert(phases).values(
+      defaultPhases.map((name, i) => ({
+        tenantId,
+        projectId: project.id,
+        name,
+        position: i,
+      }))
+    );
 
     reply.status(201).send({ data: project });
   });

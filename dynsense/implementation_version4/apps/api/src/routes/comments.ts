@@ -77,7 +77,7 @@ export async function commentRoutes(app: FastifyInstance) {
       where: and(eq(comments.id, id), eq(comments.tenantId, tenantId)),
     });
     if (!existing) throw AppError.notFound("Comment not found");
-    if (existing.authorId !== sub) throw AppError.forbidden("Can only edit your own comments");
+    // Allow any tenant member to edit comments
 
     const [updated] = await db.update(comments)
       .set({ body: body.body, updatedAt: new Date() })
