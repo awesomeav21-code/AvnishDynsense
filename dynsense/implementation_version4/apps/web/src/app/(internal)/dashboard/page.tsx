@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
@@ -81,8 +81,15 @@ export default function DashboardPage() {
   const [whatsNext, setWhatsNext] = useState<WhatsNextTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState<{ type: "status" | "priority" | "activity"; value: string; label: string } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Read filter from URL search params instead of state
+  const filterType = searchParams.get("filter") as "status" | "priority" | "activity" | null;
+  const filterValue = searchParams.get("value");
+  const filterLabel = searchParams.get("label");
+  const selectedFilter = filterType && filterValue && filterLabel ? { type: filterType, value: filterValue, label: filterLabel } : null;
   const loadCount = useRef(0);
 
   const loadDashboard = useCallback(async () => {
@@ -118,6 +125,103 @@ export default function DashboardPage() {
   const completedTasks = taskStats.find((s) => s.status === "completed")?.count ?? 0;
   const inProgressTasks = taskStats.find((s) => s.status === "in_progress")?.count ?? 0;
   const now = new Date();
+
+  // Compute chart data needed for filtering (also used in main view)
+  const pieData = taskStats.map((s) => ({
+    key: s.status,
+    name: s.status.replace("_", " "),
+    value: s.count,
+    color: STATUS_CHART_COLORS[s.status] ?? "#9CA3AF",
+  }));
+  const priorityCounts = allTasks.reduce<Record<string, number>>((acc, t) => {
+    acc[t.priority] = (acc[t.priority] ?? 0) + 1;
+    return acc;
+  }, {});
+  const priorityPieData = Object.entries(priorityCounts).map(([priority, count]) => ({
+    key: priority,
+    name: priority,
+    value: count,
+    color: PRIORITY_CHART_COLORS[priority] ?? "#9CA3AF",
+  }));
+  const dayMs = 86400000;
+  const days = 7;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const lineData: Array<{ date: string; created: number; completed: number; _dayStart: number; _dayEnd: number }> = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const dayStart = todayStart - i * dayMs;
+    const dayEnd = dayStart + dayMs;
+    const label = new Date(dayStart).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const created = allTasks.filter((t) => {
+      const d = new Date(t.createdAt).getTime();
+      return d >= dayStart && d < dayEnd;
+    }).length;
+    const completed = allTasks.filter((t) => {
+      if (!t.completedAt) return false;
+      const d = new Date(t.completedAt).getTime();
+      return d >= dayStart && d < dayEnd;
+    }).length;
+    lineData.push({ date: label, created, completed, _dayStart: dayStart, _dayEnd: dayEnd });
+  }
+
+  // Full-page filtered task list view
+  if (selectedFilter) {
+    let filteredTasks: FullTask[] = [];
+    if (selectedFilter.type === "status") {
+      filteredTasks = allTasks.filter((t) => t.status === selectedFilter.value);
+    } else if (selectedFilter.type === "priority") {
+      filteredTasks = allTasks.filter((t) => t.priority === selectedFilter.value);
+    } else if (selectedFilter.type === "activity") {
+      const day = lineData.find((d) => d.date === selectedFilter.value);
+      if (day) {
+        filteredTasks = allTasks.filter((t) => {
+          const cr = new Date(t.createdAt).getTime();
+          const co = t.completedAt ? new Date(t.completedAt).getTime() : 0;
+          return (cr >= day._dayStart && cr < day._dayEnd) ||
+                 (co >= day._dayStart && co < day._dayEnd);
+        });
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{selectedFilter.label}</h1>
+          <span className="text-sm text-gray-500">{filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}</span>
+        </div>
+        {filteredTasks.length === 0 ? (
+          <div className="text-sm text-gray-500 bg-white rounded-lg border p-6 text-center">
+            No tasks match this filter.
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border divide-y">
+            {filteredTasks.map((task) => {
+              const { text: dueDateText, isOverdue } = formatDueDate(task.dueDate, now);
+              return (
+                <Link
+                  key={task.id}
+                  href={`/tasks/${task.id}`}
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{task.title}</div>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full text-white whitespace-nowrap" style={{ backgroundColor: STATUS_CHART_COLORS[task.status] ?? "#9CA3AF" }}>
+                    {task.status.replace("_", " ")}
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap capitalize ${priorityColors[task.priority] ?? "bg-gray-100 text-gray-600"}`}>
+                    {task.priority}
+                  </span>
+                  <span className={`text-xs whitespace-nowrap ${isOverdue ? "text-red-500 font-medium" : "text-gray-400"}`}>
+                    {dueDateText}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -164,70 +268,11 @@ export default function DashboardPage() {
 
       {/* Charts */}
       {totalTasks > 0 && (() => {
-        const pieData = taskStats.map((s) => ({
-          key: s.status,
-          name: s.status.replace("_", " "),
-          value: s.count,
-          color: STATUS_CHART_COLORS[s.status] ?? "#9CA3AF",
-        }));
-
-        const priorityCounts = allTasks.reduce<Record<string, number>>((acc, t) => {
-          acc[t.priority] = (acc[t.priority] ?? 0) + 1;
-          return acc;
-        }, {});
-        const priorityPieData = Object.entries(priorityCounts).map(([priority, count]) => ({
-          key: priority,
-          name: priority,
-          value: count,
-          color: PRIORITY_CHART_COLORS[priority] ?? "#9CA3AF",
-        }));
-
-        // Bar chart: tasks created per day over the last 7 days
-        const dayMs = 86400000;
-        const days = 7;
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        const lineData: Array<{ date: string; created: number; completed: number; _dayStart: number; _dayEnd: number }> = [];
-        for (let i = days - 1; i >= 0; i--) {
-          const dayStart = todayStart - i * dayMs;
-          const dayEnd = dayStart + dayMs;
-          const label = new Date(dayStart).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          const created = allTasks.filter((t) => {
-            const d = new Date(t.createdAt).getTime();
-            return d >= dayStart && d < dayEnd;
-          }).length;
-          const completed = allTasks.filter((t) => {
-            if (!t.completedAt) return false;
-            const d = new Date(t.completedAt).getTime();
-            return d >= dayStart && d < dayEnd;
-          }).length;
-          lineData.push({ date: label, created, completed, _dayStart: dayStart, _dayEnd: dayEnd });
-        }
-
-        // Filter tasks based on selected chart filter
-        let filteredTasks: FullTask[] = [];
-        if (selectedFilter) {
-          if (selectedFilter.type === "status") {
-            filteredTasks = allTasks.filter((t) => t.status === selectedFilter.value);
-          } else if (selectedFilter.type === "priority") {
-            filteredTasks = allTasks.filter((t) => t.priority === selectedFilter.value);
-          } else if (selectedFilter.type === "activity") {
-            const day = lineData.find((d) => d.date === selectedFilter.value);
-            if (day) {
-              filteredTasks = allTasks.filter((t) => {
-                const created = new Date(t.createdAt).getTime();
-                const completed = t.completedAt ? new Date(t.completedAt).getTime() : 0;
-                return (created >= day._dayStart && created < day._dayEnd) ||
-                       (completed >= day._dayStart && completed < day._dayEnd);
-              });
-            }
-          }
-        }
-
         return (
           <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Status pie chart */}
-            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "status" ? "ring-2 ring-ai/30" : ""}`}>
+            <div className="bg-white rounded-lg border p-4">
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Status</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -243,25 +288,21 @@ export default function DashboardPage() {
                     cursor="pointer"
                     onClick={(_: unknown, index: number) => {
                       const entry = pieData[index]!;
-                      setSelectedFilter((prev) =>
-                        prev?.type === "status" && prev.value === entry.key
-                          ? null
-                          : { type: "status", value: entry.key, label: `Status: ${entry.name}` }
-                      );
+                      router.push(`/dashboard?filter=status&value=${encodeURIComponent(entry.key)}&label=${encodeURIComponent(`Status: ${entry.name}`)}`);
                     }}
                   >
                     {pieData.map((entry, i) => (
                       <Cell
                         key={i}
                         fill={entry.color}
-                        stroke={selectedFilter?.type === "status" && selectedFilter.value === entry.key ? "#1e293b" : "none"}
-                        strokeWidth={selectedFilter?.type === "status" && selectedFilter.value === entry.key ? 2 : 0}
+                        stroke="none"
+                        strokeWidth={0}
                       />
                     ))}
                   </Pie>
                   <Tooltip
                     contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
-                    formatter={(value: number) => [value, "Tasks"]}
+                    formatter={(value) => [value, "Tasks"]}
                   />
                   <Legend
                     iconSize={8}
@@ -272,7 +313,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Priority pie chart */}
-            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "priority" ? "ring-2 ring-ai/30" : ""}`}>
+            <div className="bg-white rounded-lg border p-4">
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Tasks by Priority</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -288,25 +329,21 @@ export default function DashboardPage() {
                     cursor="pointer"
                     onClick={(_: unknown, index: number) => {
                       const entry = priorityPieData[index]!;
-                      setSelectedFilter((prev) =>
-                        prev?.type === "priority" && prev.value === entry.key
-                          ? null
-                          : { type: "priority", value: entry.key, label: `Priority: ${entry.name}` }
-                      );
+                      router.push(`/dashboard?filter=priority&value=${encodeURIComponent(entry.key)}&label=${encodeURIComponent(`Priority: ${entry.name}`)}`);
                     }}
                   >
                     {priorityPieData.map((entry, i) => (
                       <Cell
                         key={i}
                         fill={entry.color}
-                        stroke={selectedFilter?.type === "priority" && selectedFilter.value === entry.key ? "#1e293b" : "none"}
-                        strokeWidth={selectedFilter?.type === "priority" && selectedFilter.value === entry.key ? 2 : 0}
+                        stroke="none"
+                        strokeWidth={0}
                       />
                     ))}
                   </Pie>
                   <Tooltip
                     contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
-                    formatter={(value: number) => [value, "Tasks"]}
+                    formatter={(value) => [value, "Tasks"]}
                   />
                   <Legend
                     iconSize={8}
@@ -317,18 +354,14 @@ export default function DashboardPage() {
             </div>
 
             {/* Activity bar chart */}
-            <div className={`bg-white rounded-lg border p-4 transition-all ${selectedFilter?.type === "activity" ? "ring-2 ring-ai/30" : ""}`}>
+            <div className="bg-white rounded-lg border p-4">
               <h3 className="text-xs font-semibold text-gray-500 mb-2">Activity (Last 7 Days)</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
                   data={lineData}
                   onClick={(state) => {
                     if (state?.activeLabel) {
-                      setSelectedFilter((prev) =>
-                        prev?.type === "activity" && prev.value === state.activeLabel
-                          ? null
-                          : { type: "activity", value: state.activeLabel!, label: `Activity on ${state.activeLabel}` }
-                      );
+                      router.push(`/dashboard?filter=activity&value=${encodeURIComponent(String(state.activeLabel!))}&label=${encodeURIComponent(`Activity on ${state.activeLabel}`)}`);
                     }
                   }}
                 >
@@ -353,56 +386,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Filtered task list panel */}
-          {selectedFilter && (
-            <div className="bg-white rounded-lg border">
-              <div className="flex items-center justify-between px-4 py-3 border-b">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold">{selectedFilter.label}</h3>
-                  <span className="text-xs text-gray-400">{filteredTasks.length} tasks</span>
-                </div>
-                <button
-                  onClick={() => setSelectedFilter(null)}
-                  className="text-gray-400 hover:text-gray-600 text-lg leading-none"
-                >
-                  &times;
-                </button>
-              </div>
-              {filteredTasks.length === 0 ? (
-                <div className="p-6 text-center text-xs text-gray-500">No tasks match this filter.</div>
-              ) : (
-                <div className="divide-y max-h-80 overflow-y-auto">
-                  {filteredTasks.map((task) => {
-                    const { text: dueDateText, isOverdue } = formatDueDate(task.dueDate, now);
-                    return (
-                      <Link
-                        key={task.id}
-                        href={`/tasks/${task.id}`}
-                        className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                      >
-                        <span className="text-xs font-medium text-gray-900 truncate mr-3">{task.title}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                            STATUS_CHART_COLORS[task.status]
-                              ? `text-white`
-                              : "bg-gray-100 text-gray-600"
-                          }`} style={{ backgroundColor: STATUS_CHART_COLORS[task.status] }}>
-                            {task.status.replace("_", " ")}
-                          </span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${priorityColors[task.priority] ?? "bg-gray-100 text-gray-600"}`}>
-                            {task.priority}
-                          </span>
-                          <span className={`text-[10px] ${isOverdue ? "text-red-600 font-medium" : "text-gray-400"}`}>
-                            {dueDateText}
-                          </span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
           </>
         );
       })()}

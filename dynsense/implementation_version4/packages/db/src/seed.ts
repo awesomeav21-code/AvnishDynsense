@@ -403,6 +403,185 @@ async function seed() {
 
     allTasks.push(...insertedTasks.map((t) => ({ id: t.id, projectId: project.id, title: t.title })));
 
+    // --- Subtasks (2-3 per task) ---
+    const subtaskTemplates: Record<string, string[][]> = {
+      "Platform Rebuild": [
+        ["Configure pnpm workspaces", "Add shared tsconfig presets", "Set up Turborepo pipeline config"],
+        ["Design tasks table with indexes", "Create migration scripts", "Add seed data helpers"],
+        ["Create low-fidelity mockups", "Design component hierarchy", "Add responsive breakpoints"],
+        ["Outline system architecture", "Document API contracts", "Define deployment topology"],
+        ["Implement login endpoint", "Add refresh token rotation", "Create auth middleware"],
+        ["Build stat cards component", "Add Recharts pie and bar charts", "Create activity feed widget"],
+        ["Define route schemas with Zod", "Implement CRUD endpoints", "Add pagination and filtering"],
+        ["Create trigram index on tasks", "Build search API endpoint", "Add debounced search UI"],
+        ["Configure S3 bucket and IAM", "Build multipart upload handler", "Add file preview component"],
+        ["Create build workflow", "Add test and lint steps", "Configure deploy on merge"],
+        ["Set up WebSocket server", "Create notification event types", "Build toast notification UI"],
+        ["Write unit tests for auth module", "Add API route tests", "Create component render tests"],
+        ["Test all CRUD endpoints", "Add error scenario tests", "Create load test suite"],
+        ["Run mobile performance audit", "Optimize bundle size", "Fix accessibility issues"],
+        ["Scan for XSS vulnerabilities", "Check SQL injection vectors", "Audit dependency CVEs"],
+        ["Configure Sentry SDK", "Add error boundary components", "Set up alerting rules"],
+        ["Build Docker image for staging", "Configure Vercel project", "Run smoke test suite"],
+        ["Update DNS A records", "Run final health checks", "Enable traffic cutover"],
+      ],
+      "Mobile App": [
+        ["Configure Metro bundler", "Add TypeScript strict mode", "Set up navigation stack"],
+        ["Build button and input atoms", "Create card and list molecules", "Add theming with tokens"],
+        ["Implement Face ID / Touch ID", "Add PIN fallback flow", "Create login form validation"],
+        ["Build task card component", "Add infinite scroll pagination", "Implement pull-to-refresh"],
+        ["Configure FCM and APNs", "Build notification handler", "Add notification preferences screen"],
+        ["Set up WatermelonDB schema", "Build sync conflict resolver", "Add offline queue processor"],
+        ["Integrate camera API", "Add photo cropping UI", "Build attachment upload service"],
+        ["Configure iOS signing", "Set up Android keystores", "Create build lane scripts"],
+        ["Write login flow E2E test", "Add task CRUD E2E test", "Create offline mode E2E test"],
+        ["Check App Store guidelines", "Verify Play Store policies", "Prepare store listing assets"],
+        ["Submit iOS build to App Store", "Submit Android build to Play Store", "Monitor initial crash reports"],
+      ],
+      "Data Migration": [
+        ["Document table relationships", "Export Oracle DDL scripts", "Identify deprecated columns"],
+        ["Map VARCHAR2 to TEXT", "Convert NUMBER to numeric types", "Handle CLOB to JSONB"],
+        ["Build stream reader for Oracle", "Create transform pipeline", "Write PostgreSQL batch inserter"],
+        ["Remove duplicate records", "Normalize phone numbers", "Fix encoding issues"],
+        ["Build change data capture listener", "Create delta sync processor", "Add sync status dashboard"],
+        ["Run row count comparisons", "Verify referential integrity", "Check data type accuracy"],
+        ["Execute full migration on staging", "Measure migration duration", "Validate application queries"],
+        ["Generate data accuracy report", "Schedule sign-off meeting", "Obtain written approval"],
+        ["Freeze source writes", "Execute production migration", "Run post-migration validation"],
+      ],
+      "Analytics Dashboard": [
+        ["Interview stakeholders", "Compile report requirements", "Prioritize widget types"],
+        ["Compare bundle sizes", "Test with 10k data points", "Evaluate SSR compatibility"],
+        ["Sketch main dashboard layout", "Design filter panel", "Create widget card templates"],
+        ["Build grid layout manager", "Add resize handles", "Implement drag-and-drop reorder"],
+        ["Build line and area charts", "Add zoom and pan controls", "Create tooltip formatters"],
+        ["Define aggregation queries", "Build caching layer", "Add rate limiting"],
+        ["Create date range picker", "Build dropdown filter set", "Add filter persistence"],
+        ["Configure Puppeteer renderer", "Design PDF template", "Add email scheduling"],
+        ["Build breadcrumb navigation", "Create chart-to-chart links", "Add back button support"],
+        ["Define dashboard permission model", "Add role-based widget visibility", "Create admin override panel"],
+        ["Snapshot test pie charts", "Snapshot test bar charts", "Snapshot test line charts"],
+        ["Generate synthetic dataset", "Run concurrent query test", "Profile memory usage"],
+        ["Configure production database", "Deploy API service", "Enable CDN caching"],
+      ],
+      "Client Portal": [
+        ["Write user stories for login", "Define acceptance for dashboard", "Map permission requirements"],
+        ["Create site map", "Design navigation structure", "Define page templates"],
+        ["Build email verification flow", "Create profile setup wizard", "Add welcome tour overlay"],
+        ["Build milestone timeline", "Add progress percentage bars", "Create status change log"],
+        ["Design form with file drop zone", "Add form validation rules", "Build submission confirmation"],
+        ["Create invoice table view", "Add payment status badges", "Build receipt download"],
+        ["Build chat message interface", "Add file sharing in messages", "Create notification triggers"],
+        ["Test registration flow end-to-end", "Test request submission", "Test messaging workflow"],
+        ["Prepare UAT test scripts", "Schedule client walkthroughs", "Collect and triage feedback"],
+      ],
+      "DevOps Infrastructure": [
+        ["Map current server inventory", "Document network topology", "Identify single points of failure"],
+        ["Compare Terraform vs Pulumi features", "Run proof of concept", "Document decision rationale"],
+        ["Create VPC module", "Add subnet configuration", "Configure security groups"],
+        ["Write Helm chart values", "Configure ingress controller", "Set up namespace isolation"],
+        ["Deploy Prometheus server", "Create Grafana dashboards", "Add custom metric exporters"],
+        ["Deploy Loki stack", "Configure log aggregation", "Build log search interface"],
+        ["Write pg_dump automation", "Create restore verification", "Add backup rotation policy"],
+        ["Configure blue environment", "Build traffic switch script", "Add rollback automation"],
+        ["Define CPU and memory thresholds", "Create PagerDuty escalation", "Add Slack alert channel"],
+        ["Plan DR scenario scripts", "Execute failover test", "Measure recovery time"],
+        ["Write incident response playbook", "Document escalation paths", "Create troubleshooting guides"],
+        ["Prepare production manifests", "Schedule maintenance window", "Execute cutover steps"],
+      ],
+    };
+
+    const projectSubtasks = subtaskTemplates[project.name] ?? subtaskTemplates["Platform Rebuild"]!;
+    const subtaskValues: Array<{
+      tenantId: string; projectId: string; phaseId: string; parentTaskId: string;
+      title: string; description: string; status: string; priority: string;
+      sprint: string; assigneeId: string; position: number; createdAt: Date;
+    }> = [];
+
+    for (let i = 0; i < insertedTasks.length; i++) {
+      const parentTask = insertedTasks[i]!;
+      const subs = projectSubtasks[i] ?? ["Research and plan", "Implement core logic", "Review and polish"];
+      for (let j = 0; j < subs.length; j++) {
+        const subStatus = parentTask.status === "completed" ? "completed"
+          : parentTask.status === "in_progress" ? (j === 0 ? "completed" : j === 1 ? "in_progress" : "created")
+          : parentTask.status === "blocked" ? "blocked"
+          : parentTask.status === "ready" ? "ready"
+          : "created";
+        subtaskValues.push({
+          tenantId: tid,
+          projectId: project.id,
+          phaseId: insertedPhases[taskDefs[i]!.phase]!.id,
+          parentTaskId: parentTask.id,
+          title: subs[j]!,
+          description: `Subtask of "${parentTask.title}": ${subs[j]!}`,
+          status: subStatus,
+          priority: taskDefs[i]!.priority,
+          sprint: i % 2 === 0 ? "R0" : "R1",
+          assigneeId: allUsers[(i + j) % allUsers.length]!.id,
+          position: j,
+          createdAt: new Date(parentTask.createdAt!.getTime() + (j + 1) * 60000),
+        });
+      }
+    }
+
+    // Batch insert subtasks and collect their IDs for sub-subtask creation
+    const SUB_BATCH = 50;
+    const insertedSubtasks: Array<{ id: string; title: string; status: string; createdAt: Date; parentIdx: number }> = [];
+    for (let i = 0; i < subtaskValues.length; i += SUB_BATCH) {
+      const batch = subtaskValues.slice(i, i + SUB_BATCH);
+      const returned = await db.insert(tasks).values(batch).returning({ id: tasks.id, title: tasks.title, status: tasks.status, createdAt: tasks.createdAt });
+      returned.forEach((r, idx) => insertedSubtasks.push({ ...r, createdAt: r.createdAt!, parentIdx: i + idx }));
+    }
+    console.log(`    ${insertedSubtasks.length} subtasks created for ${project.name}`);
+
+    // --- Sub-subtasks (2 per subtask) ---
+    const subSubTemplates = [
+      ["Draft initial approach", "Validate with team"],
+      ["Write core implementation", "Add error handling"],
+      ["Run local tests", "Fix edge cases"],
+      ["Set up configuration", "Verify integration"],
+      ["Create scaffolding", "Polish and refine"],
+      ["Gather requirements", "Document findings"],
+      ["Build prototype", "Iterate on feedback"],
+      ["Review existing code", "Refactor as needed"],
+      ["Write automated tests", "Update documentation"],
+      ["Analyze dependencies", "Resolve conflicts"],
+    ];
+    const subSubValues: Array<{
+      tenantId: string; projectId: string; phaseId: string; parentTaskId: string;
+      title: string; description: string; status: string; priority: string;
+      sprint: string; assigneeId: string; position: number; createdAt: Date;
+    }> = [];
+
+    for (let s = 0; s < insertedSubtasks.length; s++) {
+      const sub = insertedSubtasks[s]!;
+      const templates = subSubTemplates[s % subSubTemplates.length]!;
+      for (let k = 0; k < templates.length; k++) {
+        const ssStatus = sub.status === "completed" ? "completed"
+          : sub.status === "in_progress" ? (k === 0 ? "completed" : "in_progress")
+          : sub.status;
+        subSubValues.push({
+          tenantId: tid,
+          projectId: project.id,
+          phaseId: insertedPhases[taskDefs[Math.floor(sub.parentIdx / 3) % taskDefs.length]!.phase]!.id,
+          parentTaskId: sub.id,
+          title: templates[k]!,
+          description: `Sub-subtask of "${sub.title}": ${templates[k]!}`,
+          status: ssStatus,
+          priority: taskDefs[Math.floor(sub.parentIdx / 3) % taskDefs.length]!.priority,
+          sprint: s % 2 === 0 ? "R0" : "R1",
+          assigneeId: allUsers[(s + k + 5) % allUsers.length]!.id,
+          position: k,
+          createdAt: new Date(sub.createdAt.getTime() + (k + 1) * 60000),
+        });
+      }
+    }
+
+    for (let i = 0; i < subSubValues.length; i += SUB_BATCH) {
+      await db.insert(tasks).values(subSubValues.slice(i, i + SUB_BATCH));
+    }
+    console.log(`    ${subSubValues.length} sub-subtasks created for ${project.name}`);
+
     // --- Task Assignments (multi-assignee on first 8 tasks) ---
     for (let i = 0; i < Math.min(8, insertedTasks.length); i++) {
       const secondAssignee = allUsers[(i + 2) % allUsers.length]!;

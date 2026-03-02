@@ -38,6 +38,7 @@ export async function projectRoutes(app: FastifyInstance) {
       startDate: body.startDate ? new Date(body.startDate) : undefined,
       endDate: body.endDate ? new Date(body.endDate) : undefined,
     }).returning();
+    if (!project) throw new Error("Failed to create project");
 
     // Auto-create default phases for every new project
     const defaultPhases = ["Discovery", "Development", "Testing", "Deployment"];

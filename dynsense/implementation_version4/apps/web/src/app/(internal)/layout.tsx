@@ -123,7 +123,10 @@ export default function InternalLayout({ children }: { children: React.ReactNode
         </button>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {mainNavItems.map((item) => (
+          {mainNavItems.filter((item) => {
+            if (item.href === "/team" && user && (user.role === "developer" || user.role === "client")) return false;
+            return true;
+          }).map((item) => (
             <Link
               key={item.href}
               href={item.href}

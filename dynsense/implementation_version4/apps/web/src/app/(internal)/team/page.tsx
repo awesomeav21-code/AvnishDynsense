@@ -125,6 +125,18 @@ export default function TeamPage() {
   const activeUsers = users.filter((u) => u.status !== "deactivated");
   const deactivatedUsers = users.filter((u) => u.status === "deactivated");
 
+  // Developers and clients cannot access team management
+  if (!loading && (userRole === "developer" || userRole === "client")) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-gray-900">Access Restricted</h2>
+          <p className="text-sm text-gray-500 mt-1">You don&apos;t have permission to view this page.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">

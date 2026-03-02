@@ -39,21 +39,44 @@ function progressColor(pct: number): string {
   return "bg-red-500";
 }
 
+interface TaskItem {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  projectId: string;
+}
+
+const taskStatusColors: Record<string, string> = {
+  created: "bg-gray-100 text-gray-600",
+  ready: "bg-blue-100 text-blue-700",
+  in_progress: "bg-purple-100 text-purple-700",
+  review: "bg-yellow-100 text-yellow-700",
+  completed: "bg-green-100 text-green-700",
+  blocked: "bg-red-100 text-red-700",
+  cancelled: "bg-gray-200 text-gray-500",
+};
+
 export default function PortfolioPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState<{ type: string; value: string } | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await api.getProjects();
         const summaries: ProjectSummary[] = [];
+        const collectedTasks: TaskItem[] = [];
 
         for (const project of res.data) {
           try {
             const taskRes = await api.getTasks({ projectId: project.id });
-            const allTasks = taskRes.data;
+            const projectTasks = taskRes.data as TaskItem[];
+            collectedTasks.push(...projectTasks.map((t) => ({ ...t, projectId: project.id })));
             const now = new Date();
 
             summaries.push({
@@ -61,12 +84,12 @@ export default function PortfolioPage() {
               name: project.name,
               status: project.status,
               description: project.description ?? null,
-              taskCount: allTasks.length,
-              completedCount: allTasks.filter(
-                (t: { status: string }) => t.status === "completed"
+              taskCount: projectTasks.length,
+              completedCount: projectTasks.filter(
+                (t) => t.status === "completed"
               ).length,
-              overdueCount: allTasks.filter(
-                (t: { status: string; dueDate: string | null }) =>
+              overdueCount: projectTasks.filter(
+                (t) =>
                   t.dueDate && new Date(t.dueDate) < now && t.status !== "completed"
               ).length,
             });
@@ -84,6 +107,7 @@ export default function PortfolioPage() {
         }
 
         setProjects(summaries);
+        setAllTasks(collectedTasks);
       } catch {
         setError("Failed to load portfolio data");
       } finally {
@@ -120,6 +144,91 @@ export default function PortfolioPage() {
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-4 py-3">
         {error}
+      </div>
+    );
+  }
+
+  // When a chart is clicked, show a full-page task list view
+  if (selectedFilter) {
+    const now = new Date();
+    let filtered: TaskItem[] = [];
+    let label = "";
+
+    if (selectedFilter.type === "completion" && selectedFilter.value === "completed") {
+      filtered = allTasks.filter((t) => t.status === "completed");
+      label = "Completed Tasks";
+    } else if (selectedFilter.type === "completion" && selectedFilter.value === "remaining") {
+      filtered = allTasks.filter((t) => t.status !== "completed");
+      label = "Remaining Tasks";
+    } else if (selectedFilter.type === "projectStatus") {
+      const projectIds = projects.filter((p) => p.status === selectedFilter.value).map((p) => p.id);
+      filtered = allTasks.filter((t) => projectIds.includes(t.projectId));
+      label = `Tasks in "${selectedFilter.value.replace("_", " ")}" projects`;
+    } else if (selectedFilter.type === "overdue") {
+      filtered = allTasks.filter(
+        (t) => t.projectId === selectedFilter.value && t.dueDate && new Date(t.dueDate) < now && t.status !== "completed"
+      );
+      const projName = projects.find((p) => p.id === selectedFilter.value)?.name ?? "";
+      label = `Overdue Tasks — ${projName}`;
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSelectedFilter(null)}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Portfolio
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{label}</h1>
+          <span className="text-sm text-gray-500">{filtered.length} task{filtered.length !== 1 ? "s" : ""}</span>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="text-sm text-gray-500 bg-white rounded-lg border p-6 text-center">
+            No tasks match this filter.
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg border divide-y">
+            {filtered.map((t) => {
+              const now2 = new Date();
+              const projName = projects.find((p) => p.id === t.projectId)?.name ?? "";
+              return (
+                <Link
+                  key={t.id}
+                  href={`/tasks/${t.id}`}
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{t.title}</div>
+                    {projName && <div className="text-[10px] text-gray-400 mt-0.5">{projName}</div>}
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap capitalize ${taskStatusColors[t.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    {t.status.replace("_", " ")}
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap capitalize ${
+                    t.priority === "critical" ? "bg-red-100 text-red-700" :
+                    t.priority === "high" ? "bg-orange-100 text-orange-700" :
+                    t.priority === "medium" ? "bg-blue-100 text-blue-700" :
+                    "bg-gray-100 text-gray-600"
+                  }`}>
+                    {t.priority}
+                  </span>
+                  {t.dueDate && (
+                    <span className={`text-xs whitespace-nowrap ${new Date(t.dueDate) < now2 ? "text-red-500 font-medium" : "text-gray-400"}`}>
+                      {new Date(t.dueDate).toLocaleDateString()}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -198,6 +307,12 @@ export default function PortfolioPage() {
                   paddingAngle={2}
                   startAngle={90}
                   endAngle={-270}
+                  cursor="pointer"
+                  onClick={(_: unknown, index: number) => {
+                    const label = completionData[index]?.name;
+                    if (label === "Completed") setSelectedFilter({ type: "completion", value: "completed" });
+                    else setSelectedFilter({ type: "completion", value: "remaining" });
+                  }}
                 >
                   {completionData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -237,6 +352,11 @@ export default function PortfolioPage() {
                   innerRadius={45}
                   outerRadius={75}
                   paddingAngle={2}
+                  cursor="pointer"
+                  onClick={(_: unknown, index: number) => {
+                    const status = Object.keys(statusCounts)[index];
+                    if (status) setSelectedFilter({ type: "projectStatus", value: status });
+                  }}
                 >
                   {statusData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -279,7 +399,17 @@ export default function PortfolioPage() {
                     contentStyle={{ fontSize: "12px", borderRadius: "8px" }}
                     formatter={(value: number | undefined) => [value ?? 0, "Overdue"]}
                   />
-                  <Bar dataKey="overdue" fill="#EF4444" radius={[0, 4, 4, 0]} barSize={18} />
+                  <Bar
+                    dataKey="overdue"
+                    fill="#EF4444"
+                    radius={[0, 4, 4, 0]}
+                    barSize={18}
+                    cursor="pointer"
+                    onClick={(data) => {
+                      const project = projects.find((p) => p.name === data.name);
+                      if (project) setSelectedFilter({ type: "overdue", value: project.id });
+                    }}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -347,6 +477,7 @@ export default function PortfolioPage() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

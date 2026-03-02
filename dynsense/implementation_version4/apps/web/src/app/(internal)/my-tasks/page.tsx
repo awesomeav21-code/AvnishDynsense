@@ -108,6 +108,7 @@ function MyTasksContent() {
   const router = useRouter();
   const highlightParam = searchParams.get("highlight");
   const viewParam = searchParams.get("view") as ViewMode | null;
+  const addAsSubtaskId = searchParams.get("addAsSubtask");
 
   const [viewMode, setViewModeState] = useState<ViewMode>(
     viewParam && ["list", "kanban", "calendar", "table", "timeline"].includes(viewParam) ? viewParam : "list"
@@ -165,10 +166,15 @@ function MyTasksContent() {
   const [creating, setCreating] = useState(false);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
+  const isClient = currentUser?.role === "client";
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [subtasks, setSubtasks] = useState<string[]>([]);
   const [subtaskInput, setSubtaskInput] = useState("");
+  const [existingSubtasks, setExistingSubtasks] = useState<Array<{ id: string; title: string }>>([]);
+  const [existingTaskSearch, setExistingTaskSearch] = useState("");
+  const [existingTaskResults, setExistingTaskResults] = useState<Array<{ id: string; title: string }>>([]);
+  const [showExistingSearch, setShowExistingSearch] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [newReportedBy, setNewReportedBy] = useState("");
 
@@ -234,8 +240,36 @@ function MyTasksContent() {
     }
   }, [highlightParam, loading, router]);
 
+  // Auto-open creation form when addAsSubtask param is present
+  useEffect(() => {
+    if (addAsSubtaskId && !loading) {
+      setShowNewTask(true);
+    }
+  }, [addAsSubtaskId, loading]);
+
+  // Search existing tasks for subtask linking
+  useEffect(() => {
+    if (!existingTaskSearch.trim()) {
+      setExistingTaskResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.request<{ data: Array<{ id: string; title: string; projectId?: string }> }>(`/search?q=${encodeURIComponent(existingTaskSearch.trim())}&limit=5&type=tasks`);
+        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
+        setExistingTaskResults(res.data.filter((t) => !alreadyAdded.has(t.id)));
+      } catch {
+        // Fallback: filter from loaded tasks
+        const q = existingTaskSearch.trim().toLowerCase();
+        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
+        setExistingTaskResults(tasks.filter((t) => t.title.toLowerCase().includes(q) && !alreadyAdded.has(t.id)).slice(0, 5));
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [existingTaskSearch, existingSubtasks, tasks]);
+
   const handleCreateTask = useCallback(async () => {
-    if (!newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0) return;
+    if (!newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0) return;
     setCreating(true);
     try {
       const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
@@ -269,6 +303,26 @@ function MyTasksContent() {
             })
           )
         );
+      }
+
+      // Demote existing tasks as subtasks
+      const taskIdsTodemote = existingSubtasks.map((t) => t.id);
+      if (addAsSubtaskId && !taskIdsTodemote.includes(addAsSubtaskId)) {
+        taskIdsTodemote.push(addAsSubtaskId);
+      }
+      if (taskIdsTodemote.length > 0) {
+        const demoteResults = await Promise.allSettled(
+          taskIdsTodemote.map((id) =>
+            api.request(`/tasks/${id}/demote`, {
+              method: "POST",
+              body: JSON.stringify({ parentTaskId: res.data.id }),
+            })
+          )
+        );
+        const failCount = demoteResults.filter((r) => r.status === "rejected").length;
+        if (failCount > 0) {
+          setError(`Task created, but ${failCount} existing subtask${failCount > 1 ? "s" : ""} could not be linked.`);
+        }
       }
 
       // Attach selected tags
@@ -309,15 +363,20 @@ function MyTasksContent() {
       setNewReportedBy(currentUser?.id ?? "");
       setSubtasks([]);
       setSubtaskInput("");
+      setExistingSubtasks([]);
+      setExistingTaskSearch("");
       setSelectedTagIds(new Set());
       setNewComment("");
       setShowNewTask(false);
+      if (addAsSubtaskId) {
+        router.replace("/my-tasks", { scroll: false });
+      }
     } catch {
       setError("Failed to create task");
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, selectedTagIds, newComment, currentUser]);
+  }, [newTitle, newProjectId, newPriority, newStartDate, newDueDate, newDescription, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, existingSubtasks, selectedTagIds, newComment, currentUser, addAsSubtaskId, router]);
 
   const handleStatusChange = useCallback(async (taskId: string, newStatus: string) => {
     setChangingStatusId(null);
@@ -360,15 +419,17 @@ function MyTasksContent() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">My Tasks</h1>
-          <button
-            onClick={() => setShowNewTask((prev) => !prev)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Task
-          </button>
+          {!isClient && (
+            <button
+              onClick={() => setShowNewTask((prev) => !prev)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Task
+            </button>
+          )}
         </div>
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {viewTabs.map((tab) => (
@@ -618,8 +679,26 @@ function MyTasksContent() {
           {/* Subtasks */}
           <div>
             <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks <span className="text-red-500">*</span></label>
-            {subtasks.length > 0 && (
+            {(subtasks.length > 0 || existingSubtasks.length > 0) && (
               <div className="space-y-1 mb-2">
+                {existingSubtasks.map((et) => (
+                  <div key={et.id} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5 border border-blue-200">
+                    <svg className="w-3 h-3 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                    </svg>
+                    <span className="flex-1 text-blue-700 truncate">{et.title}</span>
+                    <span className="text-[10px] text-blue-400">existing</span>
+                    <button
+                      type="button"
+                      onClick={() => setExistingSubtasks((prev) => prev.filter((t) => t.id !== et.id))}
+                      className="text-blue-400 hover:text-red-500 flex-shrink-0"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
                 {subtasks.map((st, idx) => (
                   <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5 border">
                     <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -651,7 +730,7 @@ function MyTasksContent() {
                     setSubtaskInput("");
                   }
                 }}
-                placeholder="Add a subtask and press Enter..."
+                placeholder="Add a new subtask and press Enter..."
                 className="flex-1 text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
               />
               <button
@@ -667,6 +746,35 @@ function MyTasksContent() {
               >
                 Add
               </button>
+            </div>
+            {/* Link existing task as subtask */}
+            <div className="relative mt-2">
+              <input
+                type="text"
+                value={existingTaskSearch}
+                onChange={(e) => { setExistingTaskSearch(e.target.value); setShowExistingSearch(true); }}
+                onFocus={() => setShowExistingSearch(true)}
+                placeholder="Search existing task to add as subtask..."
+                className="w-full text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+              />
+              {showExistingSearch && existingTaskResults.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                  {existingTaskResults.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setExistingSubtasks((prev) => [...prev, { id: t.id, title: t.title }]);
+                        setExistingTaskSearch("");
+                        setShowExistingSearch(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-b-0"
+                    >
+                      {t.title}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -693,7 +801,7 @@ function MyTasksContent() {
             </button>
             <button
               onClick={handleCreateTask}
-              disabled={creating || !newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0}
+              disabled={creating || !newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0}
               className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
             >
               {creating ? "Creating..." : "Create Task"}
@@ -866,7 +974,7 @@ function MyTasksContent() {
                           {task.priority}
                         </span>
 
-                        {isChanging ? (
+                        {!isClient && isChanging ? (
                           <select
                             autoFocus
                             value={task.status}
@@ -879,12 +987,12 @@ function MyTasksContent() {
                             ))}
                           </select>
                         ) : (
-                          <button
-                            onClick={() => setChangingStatusId(task.id)}
-                            className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap cursor-pointer hover:ring-2 hover:ring-ai/30 transition-all ${statusColors[task.status] ?? ""}`}
+                          <span
+                            onClick={!isClient ? () => setChangingStatusId(task.id) : undefined}
+                            className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${!isClient ? "cursor-pointer hover:ring-2 hover:ring-ai/30" : ""} transition-all ${statusColors[task.status] ?? ""}`}
                           >
                             {task.status.replace("_", " ")}
-                          </button>
+                          </span>
                         )}
 
                         {task.dueDate && (

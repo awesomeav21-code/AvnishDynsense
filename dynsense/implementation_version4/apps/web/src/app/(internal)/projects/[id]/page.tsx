@@ -109,6 +109,10 @@ export default function ProjectDetailPage() {
   const [newComment, setNewComment] = useState("");
   const [subtasks, setSubtasks] = useState<string[]>([]);
   const [subtaskInput, setSubtaskInput] = useState("");
+  const [existingSubtasks, setExistingSubtasks] = useState<Array<{ id: string; title: string }>>([]);
+  const [existingTaskSearch, setExistingTaskSearch] = useState("");
+  const [existingTaskResults, setExistingTaskResults] = useState<Array<{ id: string; title: string }>>([]);
+  const [showExistingSearch, setShowExistingSearch] = useState(false);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [phases, setPhases] = useState<Phase[]>([]);
@@ -163,11 +167,34 @@ export default function ProjectDetailPage() {
     setNewComment("");
     setSubtasks([]);
     setSubtaskInput("");
+    setExistingSubtasks([]);
+    setExistingTaskSearch("");
     setSelectedTagIds(new Set());
   }, [currentUser]);
 
+  // Search existing tasks for subtask linking
+  useEffect(() => {
+    if (!existingTaskSearch.trim()) {
+      setExistingTaskResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.request<{ data: Array<{ id: string; title: string }> }>(`/search?q=${encodeURIComponent(existingTaskSearch.trim())}&limit=5&type=tasks`);
+        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
+        setExistingTaskResults(res.data.filter((t) => !alreadyAdded.has(t.id)));
+      } catch {
+        // Fallback: filter from loaded tasks
+        const q = existingTaskSearch.trim().toLowerCase();
+        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
+        setExistingTaskResults(tasks.filter((t) => t.title.toLowerCase().includes(q) && !alreadyAdded.has(t.id)).slice(0, 5));
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [existingTaskSearch, existingSubtasks, tasks]);
+
   const handleCreateTask = useCallback(async () => {
-    if (!newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0) return;
+    if (!newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0) return;
     setCreating(true);
     try {
       const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
@@ -203,6 +230,22 @@ export default function ProjectDetailPage() {
         );
       }
 
+      // Demote existing tasks as subtasks
+      if (existingSubtasks.length > 0) {
+        const demoteResults = await Promise.allSettled(
+          existingSubtasks.map((t) =>
+            api.request(`/tasks/${t.id}/demote`, {
+              method: "POST",
+              body: JSON.stringify({ parentTaskId: res.data.id }),
+            })
+          )
+        );
+        const failCount = demoteResults.filter((r) => r.status === "rejected").length;
+        if (failCount > 0) {
+          setError(`Task created, but ${failCount} existing subtask${failCount > 1 ? "s" : ""} could not be linked.`);
+        }
+      }
+
       // Attach selected tags
       if (selectedTagIds.size > 0) {
         await Promise.allSettled(
@@ -236,7 +279,7 @@ export default function ProjectDetailPage() {
     } finally {
       setCreating(false);
     }
-  }, [projectId, newTitle, newDescription, newPriority, newStartDate, newDueDate, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, selectedTagIds, newComment, resetTaskForm]);
+  }, [projectId, newTitle, newDescription, newPriority, newStartDate, newDueDate, newEstimatedEffort, newAssigneeId, newPhaseId, newSprint, newReportedBy, subtasks, existingSubtasks, selectedTagIds, newComment, resetTaskForm]);
 
   function startEditing() {
     if (!project) return;
@@ -694,8 +737,26 @@ export default function ProjectDetailPage() {
             {/* Subtasks */}
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks <span className="text-red-500">*</span></label>
-              {subtasks.length > 0 && (
+              {(subtasks.length > 0 || existingSubtasks.length > 0) && (
                 <div className="space-y-1 mb-2">
+                  {existingSubtasks.map((et) => (
+                    <div key={et.id} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5 border border-blue-200">
+                      <svg className="w-3 h-3 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                      </svg>
+                      <span className="flex-1 text-blue-700 truncate">{et.title}</span>
+                      <span className="text-[10px] text-blue-400">existing</span>
+                      <button
+                        type="button"
+                        onClick={() => setExistingSubtasks((prev) => prev.filter((t) => t.id !== et.id))}
+                        className="text-blue-400 hover:text-red-500 flex-shrink-0"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
                   {subtasks.map((st, idx) => (
                     <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5 border">
                       <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -744,6 +805,35 @@ export default function ProjectDetailPage() {
                   Add
                 </button>
               </div>
+              {/* Link existing task as subtask */}
+              <div className="relative mt-2">
+                <input
+                  type="text"
+                  value={existingTaskSearch}
+                  onChange={(e) => { setExistingTaskSearch(e.target.value); setShowExistingSearch(true); }}
+                  onFocus={() => setShowExistingSearch(true)}
+                  placeholder="Search existing task to add as subtask..."
+                  className="w-full text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+                />
+                {showExistingSearch && existingTaskResults.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                    {existingTaskResults.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setExistingSubtasks((prev) => [...prev, { id: t.id, title: t.title }]);
+                          setExistingTaskSearch("");
+                          setShowExistingSearch(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-b-0"
+                      >
+                        {t.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Comment Trail */}
@@ -769,7 +859,7 @@ export default function ProjectDetailPage() {
               </button>
               <button
                 onClick={handleCreateTask}
-                disabled={creating || !newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || subtasks.length === 0 || !newComment.trim() || selectedTagIds.size === 0}
+                disabled={creating || !newTitle.trim() || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0}
                 className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
               >
                 {creating ? "Creating..." : "Create Task"}

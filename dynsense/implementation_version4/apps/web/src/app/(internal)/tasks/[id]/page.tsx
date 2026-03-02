@@ -437,10 +437,15 @@ export default function TaskDetailPage() {
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const isClient = currentUserRole === "client";
+  const isDevNotAssigned = currentUserRole === "developer" && task !== null && task.assigneeId !== currentUserId;
+  const isReadOnly = isClient || isDevNotAssigned;
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [addingSubtask, setAddingSubtask] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentBody, setEditCommentBody] = useState("");
+
 
   // Editable fields
   const [editingTitle, setEditingTitle] = useState(false);
@@ -520,6 +525,7 @@ export default function TaskDetailPage() {
         setUsers(usersRes.data as User[]);
         if (meRes && typeof meRes === "object" && "id" in meRes) {
           setCurrentUserId((meRes as { id: string }).id);
+          setCurrentUserRole((meRes as { role: string }).role);
         }
         setEditTitle(t.title);
         setEditDesc(t.description ?? "");
@@ -660,7 +666,7 @@ export default function TaskDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* Title */}
           <div className="bg-white rounded-lg border p-6">
-            {editingTitle ? (
+            {!isReadOnly && editingTitle ? (
               <div className="flex items-center gap-2">
                 <input
                   autoFocus
@@ -694,12 +700,14 @@ export default function TaskDetailPage() {
             ) : (
               <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold">{task.title}</h1>
-                <button
-                  onClick={() => setEditingTitle(true)}
-                  className="text-xs px-2 py-1 text-gray-500 border rounded-md hover:bg-gray-50"
-                >
-                  Edit
-                </button>
+                {!isReadOnly && (
+                  <button
+                    onClick={() => setEditingTitle(true)}
+                    className="text-xs px-2 py-1 text-gray-500 border rounded-md hover:bg-gray-50"
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -708,7 +716,7 @@ export default function TaskDetailPage() {
           <div className="bg-white rounded-lg border p-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold">Description</h2>
-              {!editingDesc && (
+              {!isReadOnly && !editingDesc && (
                 <button
                   onClick={() => setEditingDesc(true)}
                   className="text-xs px-2 py-1 text-gray-500 border rounded-md hover:bg-gray-50"
@@ -774,23 +782,26 @@ export default function TaskDetailPage() {
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newSubtaskTitle}
-                onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddSubtask()}
-                placeholder="Add a subtask..."
-                className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
-              />
-              <button
-                onClick={handleAddSubtask}
-                disabled={addingSubtask || !newSubtaskTitle.trim()}
-                className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-              >
-                {addingSubtask ? "..." : "Add"}
-              </button>
-            </div>
+            {!isReadOnly && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddSubtask()}
+                  placeholder="Add a subtask..."
+                  className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+                />
+                <button
+                  onClick={handleAddSubtask}
+                  disabled={addingSubtask || !newSubtaskTitle.trim()}
+                  className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+                >
+                  {addingSubtask ? "..." : "Add"}
+                </button>
+              </div>
+            )}
+
           </div>
 
           {/* Checklists */}
@@ -857,12 +868,14 @@ export default function TaskDetailPage() {
                         <p className="text-gray-700">{c.body}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-gray-400">{new Date(c.createdAt).toLocaleString()}</span>
-                          <button
-                            onClick={() => { setEditingCommentId(c.id); setEditCommentBody(c.body); }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            Edit
-                          </button>
+                          {!isReadOnly && (
+                            <button
+                              onClick={() => { setEditingCommentId(c.id); setEditCommentBody(c.body); }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              Edit
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
@@ -870,23 +883,25 @@ export default function TaskDetailPage() {
                 ))
               )}
             </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
-              />
-              <button
-                onClick={handleAddComment}
-                disabled={submitting || !newComment.trim()}
-                className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-              >
-                {submitting ? "..." : "Send"}
-              </button>
-            </div>
+            {!isReadOnly && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+                  placeholder="Add a comment..."
+                  className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={submitting || !newComment.trim()}
+                  className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+                >
+                  {submitting ? "..." : "Send"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -897,11 +912,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Status</label>
-                <button onClick={() => setEditingField(editingField === "status" ? null : "status")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "status" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "status" ? null : "status")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "status" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "status" ? (
+              {!isReadOnly && editingField === "status" ? (
                 <select
                   value={task.status}
                   onChange={(e) => { handleStatusChange(e.target.value); setEditingField(null); }}
@@ -923,11 +940,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Sprint</label>
-                <button onClick={() => setEditingField(editingField === "sprint" ? null : "sprint")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "sprint" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "sprint" ? null : "sprint")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "sprint" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "sprint" ? (
+              {!isReadOnly && editingField === "sprint" ? (
                 <select
                   value={task.sprint || "R0"}
                   onChange={(e) => { updateField({ sprint: e.target.value }); setEditingField(null); }}
@@ -946,11 +965,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Priority</label>
-                <button onClick={() => setEditingField(editingField === "priority" ? null : "priority")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "priority" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "priority" ? null : "priority")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "priority" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "priority" ? (
+              {!isReadOnly && editingField === "priority" ? (
                 <select
                   value={task.priority}
                   onChange={(e) => { updateField({ priority: e.target.value }); setEditingField(null); }}
@@ -973,11 +994,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Project</label>
-                <button onClick={() => setEditingField(editingField === "project" ? null : "project")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "project" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "project" ? null : "project")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "project" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "project" ? (
+              {!isReadOnly && editingField === "project" ? (
                 <select
                   value={task.projectId}
                   onChange={(e) => {
@@ -1006,11 +1029,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Phase</label>
-                <button onClick={() => setEditingField(editingField === "phase" ? null : "phase")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "phase" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "phase" ? null : "phase")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "phase" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "phase" ? (
+              {!isReadOnly && editingField === "phase" ? (
                 <select
                   value={task.phaseId ?? ""}
                   onChange={(e) => { updateField({ phaseId: e.target.value || null }); setEditingField(null); }}
@@ -1031,11 +1056,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Assignee</label>
-                <button onClick={() => setEditingField(editingField === "assignee" ? null : "assignee")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "assignee" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "assignee" ? null : "assignee")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "assignee" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "assignee" ? (
+              {!isReadOnly && editingField === "assignee" ? (
                 <select
                   value={task.assigneeId ?? ""}
                   onChange={(e) => { handleAssigneeChange(e.target.value); setEditingField(null); }}
@@ -1055,76 +1082,90 @@ export default function TaskDetailPage() {
             {/* Start Date */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Start Date</label>
-              <input
-                type="date"
-                value={task.startDate ? new Date(task.startDate).toISOString().split("T")[0] : ""}
-                onChange={(e) => updateField({ startDate: e.target.value || null })}
-                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
-              />
+              {isReadOnly ? (
+                <span className="text-xs text-gray-900">{task.startDate ? new Date(task.startDate).toLocaleDateString() : "—"}</span>
+              ) : (
+                <input
+                  type="date"
+                  value={task.startDate ? new Date(task.startDate).toISOString().split("T")[0] : ""}
+                  onChange={(e) => updateField({ startDate: e.target.value || null })}
+                  className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+                />
+              )}
             </div>
 
             {/* Due Date */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">Due Date</label>
-              <input
-                type="date"
-                value={task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : ""}
-                onChange={(e) => updateField({ dueDate: e.target.value || null })}
-                className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
-              />
+              {isReadOnly ? (
+                <span className="text-xs text-gray-900">{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "—"}</span>
+              ) : (
+                <input
+                  type="date"
+                  value={task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : ""}
+                  onChange={(e) => updateField({ dueDate: e.target.value || null })}
+                  className="w-full text-xs border rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ai/50"
+                />
+              )}
             </div>
 
             {/* Estimated Effort */}
             <div ref={effortRef}>
               <label className="text-xs text-gray-500 block mb-1">Estimated Effort (pts)</label>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[...new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...customPoints])].sort((a, b) => a - b).map((pt) => (
-                  <button
-                    key={pt}
-                    onClick={() => { updateField({ estimatedEffort: pt }); setEffortFocused(true); }}
-                    className={`w-8 h-8 text-xs font-medium rounded-md border transition-colors ${
-                      Number(task.estimatedEffort) === pt && effortFocused
-                        ? "bg-ai text-white border-ai"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-ai/50 hover:text-ai"
-                    }`}
-                  >
-                    {pt}
-                  </button>
-                ))}
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={customPointInput}
-                  onChange={(e) => setCustomPointInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const val = parseFloat(customPointInput);
-                      if (val > 0) {
-                        if (![1,2,3,4,5,6,7,8,9,10].includes(val) && !customPoints.includes(val)) {
-                          setCustomPoints((prev) => [...prev, val]);
+              {isReadOnly ? (
+                <span className="text-xs text-gray-900">{task.estimatedEffort ?? "—"}</span>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[...new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...customPoints])].sort((a, b) => a - b).map((pt) => (
+                    <button
+                      key={pt}
+                      onClick={() => { updateField({ estimatedEffort: pt }); setEffortFocused(true); }}
+                      className={`w-8 h-8 text-xs font-medium rounded-md border transition-colors ${
+                        Number(task.estimatedEffort) === pt && effortFocused
+                          ? "bg-ai text-white border-ai"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-ai/50 hover:text-ai"
+                      }`}
+                    >
+                      {pt}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={customPointInput}
+                    onChange={(e) => setCustomPointInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = parseFloat(customPointInput);
+                        if (val > 0) {
+                          if (![1,2,3,4,5,6,7,8,9,10].includes(val) && !customPoints.includes(val)) {
+                            setCustomPoints((prev) => [...prev, val]);
+                          }
+                          updateField({ estimatedEffort: val });
+                          setEffortFocused(true);
+                          setCustomPointInput("");
                         }
-                        updateField({ estimatedEffort: val });
-                        setEffortFocused(true);
-                        setCustomPointInput("");
                       }
-                    }
-                  }}
-                  placeholder="+"
-                  className="w-8 h-8 text-xs text-center border border-dashed border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50 hover:border-ai/50"
-                />
-              </div>
+                    }}
+                    placeholder="+"
+                    className="w-8 h-8 text-xs text-center border border-dashed border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50 hover:border-ai/50"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Tag */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Tag</label>
-                <button onClick={() => setEditingField(editingField === "tag" ? null : "tag")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "tag" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "tag" ? null : "tag")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "tag" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "tag" ? (
+              {!isReadOnly && editingField === "tag" ? (
                 <select
                   value={tags[0]?.id ?? ""}
                   onChange={async (e) => {
@@ -1163,11 +1204,13 @@ export default function TaskDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs text-gray-500">Reported By</label>
-                <button onClick={() => setEditingField(editingField === "reportedBy" ? null : "reportedBy")} className="text-[10px] text-gray-400 hover:text-gray-600">
-                  {editingField === "reportedBy" ? "Done" : "Edit"}
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setEditingField(editingField === "reportedBy" ? null : "reportedBy")} className="text-[10px] text-gray-400 hover:text-gray-600">
+                    {editingField === "reportedBy" ? "Done" : "Edit"}
+                  </button>
+                )}
               </div>
-              {editingField === "reportedBy" ? (
+              {!isReadOnly && editingField === "reportedBy" ? (
                 <select
                   value={task.reportedBy ?? ""}
                   onChange={(e) => { updateField({ reportedBy: e.target.value || null }); setEditingField(null); }}

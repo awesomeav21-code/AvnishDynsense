@@ -30,12 +30,12 @@ export async function taskRoutes(app: FastifyInstance) {
   // All task routes require auth
   app.addHook("preHandler", authenticate);
 
-  // GET / — list tasks for tenant with filters
+  // GET / — list tasks for tenant with filters (excludes subtasks — those are fetched via /:id/subtasks)
   app.get("/", async (request) => {
     const { tenantId } = request.jwtPayload;
     const filters = taskFilterSchema.parse(request.query);
 
-    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt)];
+    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt), isNull(tasks.parentTaskId)];
 
     if (filters.projectId) conditions.push(eq(tasks.projectId, filters.projectId));
     if (filters.status) conditions.push(eq(tasks.status, filters.status));
@@ -384,12 +384,12 @@ export async function taskRoutes(app: FastifyInstance) {
     return { data: updated };
   });
 
-  // GET /stats — task counts grouped by status for a project
+  // GET /stats — task counts grouped by status for a project (excludes subtasks)
   app.get("/stats", async (request) => {
     const { tenantId } = request.jwtPayload;
     const { projectId } = request.query as { projectId?: string };
 
-    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt)];
+    const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt), isNull(tasks.parentTaskId)];
     if (projectId) conditions.push(eq(tasks.projectId, projectId));
 
     const rows = await db.select({
@@ -502,14 +502,11 @@ export async function taskRoutes(app: FastifyInstance) {
     });
     if (!task) throw AppError.notFound("Task not found");
 
-    // Verify the new parent exists and is in the same project
+    // Verify the new parent exists
     const newParent = await db.query.tasks.findFirst({
       where: and(eq(tasks.id, parentTaskId), eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt)),
     });
     if (!newParent) throw AppError.notFound("Parent task not found");
-    if (newParent.projectId !== task.projectId) {
-      throw AppError.badRequest("Parent task must be in the same project");
-    }
     if (parentTaskId === id) {
       throw AppError.badRequest("A task cannot be its own parent");
     }

@@ -27,7 +27,7 @@ export async function searchRoutes(app: FastifyInstance) {
     const params = searchSchema.parse(request.query);
     const pattern = `%${params.q}%`;
 
-    const results: Array<{ type: string; id: string; title: string; description: string | null; createdAt: Date }> = [];
+    const results: Array<{ type: string; id: string; title: string; description: string | null; createdAt: Date; projectId?: string }> = [];
 
     // Search tasks
     if (params.type === "all" || params.type === "tasks") {
@@ -36,6 +36,7 @@ export async function searchRoutes(app: FastifyInstance) {
         title: tasks.title,
         description: tasks.description,
         createdAt: tasks.createdAt,
+        projectId: tasks.projectId,
       })
         .from(tasks)
         .where(and(
@@ -47,7 +48,7 @@ export async function searchRoutes(app: FastifyInstance) {
         .limit(params.limit);
 
       for (const row of taskRows) {
-        results.push({ type: "task", id: row.id, title: row.title, description: row.description, createdAt: row.createdAt });
+        results.push({ type: "task", id: row.id, title: row.title, description: row.description, createdAt: row.createdAt, projectId: row.projectId });
       }
     }
 

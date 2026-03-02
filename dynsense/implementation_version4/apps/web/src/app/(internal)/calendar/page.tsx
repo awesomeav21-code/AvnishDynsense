@@ -463,8 +463,7 @@ export default function CalendarPage() {
                         </div>
                       </Link>
                       );
-                    }
-                    ))}
+                    })}
                   </div>
                 </div>
               );
