@@ -3,7 +3,7 @@
 // Ref: FR-121 — Status transitions
 // Ref: FR-123 — Sub-tasks (single-level nesting) via parent_task_id
 // Ref: FR-113 — Soft delete
-import { pgTable, uuid, varchar, text, integer, numeric, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, integer, numeric, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";
 import { projects } from "./projects.js";
 import { phases } from "./phases.js";
@@ -27,6 +27,7 @@ export const tasks = pgTable("tasks", {
   startDate: timestamp("start_date", { withTimezone: true }),
   dueDate: timestamp("due_date", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  clientVisible: boolean("client_visible").notNull().default(false),
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

@@ -38,3 +38,7 @@ export { integrationEvents } from "./integration-events.js";
 export { featureFlags } from "./feature-flags.js";
 export { recurringTaskConfigs } from "./recurring-task-configs.js";
 export { taskReminders } from "./task-reminders.js";
+
+// R2 tables: client portal, invite links, project members
+export { projectMembers } from "./project-members.js";
+export { inviteLinks } from "./invite-links.js";

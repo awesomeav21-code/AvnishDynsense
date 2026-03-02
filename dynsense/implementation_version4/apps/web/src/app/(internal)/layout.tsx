@@ -62,6 +62,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
 
   useEffect(() => {
     api.getMe().then(setUser).catch(() => {
+      api.clearTokens();
       router.push("/login");
     });
   }, [router]);
@@ -125,6 +126,8 @@ export default function InternalLayout({ children }: { children: React.ReactNode
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {mainNavItems.filter((item) => {
             if (item.href === "/team" && user && (user.role === "developer" || user.role === "client")) return false;
+            // Clients only see Dashboard, Projects, Notifications
+            if (user?.role === "client" && !["/dashboard", "/projects", "/notifications"].includes(item.href)) return false;
             return true;
           }).map((item) => (
             <Link
@@ -141,7 +144,8 @@ export default function InternalLayout({ children }: { children: React.ReactNode
             </Link>
           ))}
 
-          {/* Settings section */}
+          {/* Settings section — hidden from clients */}
+          {user?.role !== "client" && (
           <div className="pt-3 mt-3 border-t">
             <div className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
               Settings
@@ -161,6 +165,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
               </Link>
             ))}
           </div>
+          )}
         </nav>
 
         {user && (

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, isNull } from "drizzle-orm";
-import { projects, phases } from "@dynsense/db";
+import { eq, and, isNull, inArray } from "drizzle-orm";
+import { projects, phases, projectMembers } from "@dynsense/db";
 import { createProjectSchema, updateProjectSchema, projectIdParamSchema } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
@@ -16,7 +16,22 @@ export async function projectRoutes(app: FastifyInstance) {
 
   // GET / — list projects for tenant
   app.get("/", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role, sub: userId } = request.jwtPayload;
+
+    // Clients only see projects they're assigned to
+    if (role === "client") {
+      const memberRows = await db.select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.userId, userId), eq(projectMembers.tenantId, tenantId)));
+      const projectIds = memberRows.map((r) => r.projectId);
+      if (projectIds.length === 0) return { data: [] };
+
+      const rows = await db.query.projects.findMany({
+        where: and(eq(projects.tenantId, tenantId), isNull(projects.deletedAt), inArray(projects.id, projectIds)),
+        orderBy: (p, { desc }) => [desc(p.createdAt)],
+      });
+      return { data: rows };
+    }
 
     const rows = await db.query.projects.findMany({
       where: and(eq(projects.tenantId, tenantId), isNull(projects.deletedAt)),

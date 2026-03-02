@@ -33,6 +33,8 @@ import { customFieldRoutes } from "./routes/custom-fields.js";
 import { templateRoutes } from "./routes/templates.js";
 import { customToolRoutes } from "./routes/custom-tools.js";
 import { sseRoutes } from "./routes/sse.js";
+import { projectMemberRoutes } from "./routes/project-members.js";
+import { inviteLinkRoutes } from "./routes/invite-links.js";
 import type { Env } from "./config/env.js";
 
 declare module "fastify" {
@@ -103,6 +105,8 @@ export async function buildApp(env: Env) {
     api.register(templateRoutes, { prefix: "/templates" });
     api.register(customToolRoutes, { prefix: "/custom-tools" });
     api.register(sseRoutes, { prefix: "/sse" });
+    api.register(projectMemberRoutes, { prefix: "/project-members" });
+    api.register(inviteLinkRoutes, { prefix: "/invites" });
   }, { prefix: "/api/v1" });
 
   return app;

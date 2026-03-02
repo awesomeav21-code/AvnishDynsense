@@ -202,7 +202,7 @@ class ApiClient {
     });
   }
 
-  updateTask(id: string, data: { title?: string; description?: string; priority?: string; phaseId?: string | null; sprint?: string | null; startDate?: string | null; dueDate?: string | null; estimatedEffort?: number | null }) {
+  updateTask(id: string, data: { title?: string; description?: string; priority?: string; phaseId?: string | null; sprint?: string | null; startDate?: string | null; dueDate?: string | null; estimatedEffort?: number | null; clientVisible?: boolean }) {
     return this.request(`/tasks/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -692,6 +692,38 @@ class ApiClient {
   }
 
   // Logout
+  // Project Members
+  getProjectMembers(projectId: string) {
+    return this.request<{ data: Array<{ userId: string; role: string; assignedAt: string; userName: string; userEmail: string }> }>(`/project-members/project/${projectId}`);
+  }
+
+  addProjectMember(projectId: string, userId: string, role = "client") {
+    return this.request(`/project-members/project/${projectId}`, {
+      method: "POST",
+      body: JSON.stringify({ userId, role }),
+    });
+  }
+
+  removeProjectMember(projectId: string, userId: string) {
+    return this.request(`/project-members/project/${projectId}/${userId}`, { method: "DELETE" });
+  }
+
+  // Invite Links
+  createInviteLink(projectId: string, expiresInDays = 7) {
+    return this.request<{ data: { id: string; token: string; projectId: string; expiresAt: string; usedAt: string | null; createdAt: string } }>("/invites", {
+      method: "POST",
+      body: JSON.stringify({ projectId, expiresInDays }),
+    });
+  }
+
+  getInviteLinks(projectId: string) {
+    return this.request<{ data: Array<{ id: string; token: string; projectId: string; expiresAt: string; usedAt: string | null; createdAt: string }> }>(`/invites/project/${projectId}`);
+  }
+
+  joinViaInvite(token: string) {
+    return this.request<{ data: { projectId: string; message: string } }>(`/invites/join/${token}`, { method: "POST" });
+  }
+
   logout() {
     return this.request("/auth/logout", { method: "POST" });
   }

@@ -32,6 +32,9 @@ function permissionError(userRole: string, action: string): string {
   return `You are logged in as a ${label}. Only Admins and PMs can ${action}.`;
 }
 
+interface Project { id: string; name: string }
+interface InviteLink { id: string; token: string; projectId: string; expiresAt: string; usedAt: string | null; createdAt: string }
+
 export default function TeamPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,21 +48,32 @@ export default function TeamPage() {
   const [inviteRole, setInviteRole] = useState<string>("developer");
   const [inviting, setInviting] = useState(false);
 
+  // Invite links
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([]);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
   // Role editing
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function load() {
-      const [usersRes, meRes] = await Promise.all([
+      const [usersRes, meRes, projectsRes] = await Promise.all([
         api.getUsers().catch(() => null),
         api.getMe().catch(() => null),
+        api.getProjects().catch(() => null),
       ]);
       if (meRes) setUserRole(meRes.role);
       if (usersRes) {
         setUsers(usersRes.data);
       } else {
         setError(meRes ? permissionError(meRes.role, "view team members") : "Failed to load team members");
+      }
+      if (projectsRes) {
+        setProjects((projectsRes.data as Project[]) ?? []);
       }
       setLoading(false);
     }
@@ -311,6 +325,93 @@ export default function TeamPage() {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">deactivated</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Client Invite Links */}
+      {canManage && (
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Client Invite Links</h3>
+          <div className="bg-white rounded-lg border p-4 space-y-3">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 block mb-1">Project</label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => {
+                    setSelectedProjectId(e.target.value);
+                    if (e.target.value) {
+                      api.getInviteLinks(e.target.value).then((res) => setInviteLinks(res.data)).catch(() => {});
+                    } else {
+                      setInviteLinks([]);
+                    }
+                  }}
+                  className="w-full text-xs border rounded-md px-2 py-1.5"
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                disabled={!selectedProjectId || generatingLink}
+                onClick={async () => {
+                  if (!selectedProjectId) return;
+                  setGeneratingLink(true);
+                  try {
+                    const res = await api.createInviteLink(selectedProjectId);
+                    setInviteLinks((prev) => [res.data, ...prev]);
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Failed to generate link");
+                  } finally {
+                    setGeneratingLink(false);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50"
+              >
+                {generatingLink ? "Generating..." : "Generate Link"}
+              </button>
+            </div>
+
+            {inviteLinks.length > 0 && (
+              <div className="space-y-2 mt-3">
+                {inviteLinks.map((link) => {
+                  const url = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${link.token}`;
+                  const isExpired = new Date() > new Date(link.expiresAt);
+                  const isUsed = !!link.usedAt;
+                  return (
+                    <div key={link.id} className="flex items-center gap-3 text-xs bg-gray-50 rounded-md px-3 py-2">
+                      <code className="flex-1 text-gray-600 truncate">{url}</code>
+                      {isUsed ? (
+                        <span className="text-green-600 font-medium">Used</span>
+                      ) : isExpired ? (
+                        <span className="text-red-500 font-medium">Expired</span>
+                      ) : (
+                        <>
+                          <span className="text-gray-400">Expires {new Date(link.expiresAt).toLocaleDateString()}</span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(url);
+                              setCopiedToken(link.token);
+                              setTimeout(() => setCopiedToken(null), 2000);
+                            }}
+                            className="px-2 py-0.5 text-xs border rounded hover:bg-white transition-colors"
+                          >
+                            {copiedToken === link.token ? "Copied!" : "Copy"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedProjectId && inviteLinks.length === 0 && (
+              <p className="text-xs text-gray-400 mt-2">No invite links for this project yet.</p>
+            )}
           </div>
         </div>
       )}

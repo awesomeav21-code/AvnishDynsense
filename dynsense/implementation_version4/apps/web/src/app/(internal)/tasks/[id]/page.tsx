@@ -20,6 +20,7 @@ interface Task {
   estimatedEffort: string | null;
   reportedBy: string | null;
   reporterName: string | null;
+  clientVisible: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1226,6 +1227,24 @@ export default function TaskDetailPage() {
                 <span className="text-xs text-gray-900">{reporterName}</span>
               )}
             </div>
+
+            {/* Client Visible — PM/admin only */}
+            {(currentUserRole === "site_admin" || currentUserRole === "pm") && (
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Client Visible</label>
+                <button
+                  onClick={() => updateField({ clientVisible: !task.clientVisible })}
+                  className={`flex items-center gap-2 text-xs px-2 py-1 rounded-md border transition-colors ${
+                    task.clientVisible
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : "bg-gray-50 border-gray-200 text-gray-500"
+                  }`}
+                >
+                  <span className={`w-3 h-3 rounded-full ${task.clientVisible ? "bg-green-500" : "bg-gray-300"}`} />
+                  {task.clientVisible ? "Visible to clients" : "Hidden from clients"}
+                </button>
+              </div>
+            )}
 
             {/* Created */}
             <div>

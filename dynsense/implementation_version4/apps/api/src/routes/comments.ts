@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNotNull } from "drizzle-orm";
-import { comments, mentions, tasks } from "@dynsense/db";
+import { comments, mentions, tasks, projectMembers } from "@dynsense/db";
 import { createCommentSchema, updateCommentSchema } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
@@ -27,13 +27,19 @@ export async function commentRoutes(app: FastifyInstance) {
 
   // GET /task/:taskId — list comments for a task
   app.get("/task/:taskId", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role } = request.jwtPayload;
     const { taskId } = request.params as { taskId: string };
 
     const rows = await db.query.comments.findMany({
       where: and(eq(comments.tenantId, tenantId), eq(comments.taskId, taskId)),
       orderBy: (c, { asc }) => [asc(c.createdAt)],
     });
+
+    // Clients only see client-visible comments
+    if (role === "client") {
+      return { data: rows.filter((c) => c.clientVisible) };
+    }
+
     return { data: rows };
   });
 

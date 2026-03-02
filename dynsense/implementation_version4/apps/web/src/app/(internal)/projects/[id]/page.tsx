@@ -15,6 +15,23 @@ interface Project {
   endDate: string | null;
 }
 
+interface ProjectMember {
+  userId: string;
+  role: string;
+  assignedAt: string;
+  userName: string;
+  userEmail: string;
+}
+
+interface InviteLink {
+  id: string;
+  token: string;
+  projectId: string;
+  expiresAt: string;
+  usedAt: string | null;
+  createdAt: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -119,8 +136,24 @@ export default function ProjectDetailPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
 
+  // Project members state
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberSearchResults, setMemberSearchResults] = useState<Array<{ id: string; name: string; email: string; role: string }>>([]);
+  const [showMemberSearch, setShowMemberSearch] = useState(false);
+  const [addMemberRole, setAddMemberRole] = useState("client");
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([]);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const memberSearchRef = useRef<HTMLDivElement>(null);
+
   const canEdit = userRole === "site_admin" || userRole === "pm";
   const canDelete = userRole === "site_admin";
+  const canManageMembers = userRole === "site_admin" || userRole === "pm";
 
   useEffect(() => {
     async function load() {
@@ -139,6 +172,16 @@ export default function ProjectDetailPage() {
         setCurrentUser(meRes);
         setUserRole(meRes.role);
         setNewReportedBy(meRes.id);
+
+        // Load members & invite links for PMs/admins
+        if (meRes.role === "site_admin" || meRes.role === "pm") {
+          const [membersRes, linksRes] = await Promise.all([
+            api.getProjectMembers(projectId).catch(() => ({ data: [] })),
+            api.getInviteLinks(projectId).catch(() => ({ data: [] })),
+          ]);
+          setMembers(membersRes.data);
+          setInviteLinks(linksRes.data);
+        }
       } catch {
         setError("Failed to load project");
         try {
@@ -319,6 +362,79 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Member search with debounce
+  useEffect(() => {
+    if (!memberSearch.trim()) {
+      setMemberSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.searchUsers(memberSearch.trim(), 10);
+        const existingIds = new Set(members.map((m) => m.userId));
+        setMemberSearchResults(res.data.filter((u) => !existingIds.has(u.id) && u.status === "active"));
+      } catch { /* ignore */ }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [memberSearch, members]);
+
+  // Close member search dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (memberSearchRef.current && !memberSearchRef.current.contains(e.target as Node)) {
+        setShowMemberSearch(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  async function handleAddMember(userId: string, userName: string, userEmail: string) {
+    setAddingMember(true);
+    try {
+      await api.addProjectMember(projectId, userId, addMemberRole);
+      setMembers((prev) => [...prev, { userId, role: addMemberRole, assignedAt: new Date().toISOString(), userName, userEmail }]);
+      setMemberSearch("");
+      setMemberSearchResults([]);
+      setShowMemberSearch(false);
+    } catch {
+      setError("Failed to add member");
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    setRemovingMemberId(userId);
+    try {
+      await api.removeProjectMember(projectId, userId);
+      setMembers((prev) => prev.filter((m) => m.userId !== userId));
+    } catch {
+      setError("Failed to remove member");
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }
+
+  async function handleGenerateInviteLink() {
+    setGeneratingLink(true);
+    try {
+      const res = await api.createInviteLink(projectId);
+      setInviteLinks((prev) => [res.data, ...prev]);
+    } catch {
+      setError("Failed to generate invite link");
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
+  function copyInviteLink(link: InviteLink) {
+    const url = `${window.location.origin}/join/${link.token}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLinkId(link.id);
+    setTimeout(() => setCopiedLinkId(null), 2000);
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -494,6 +610,161 @@ export default function ProjectDetailPage() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Project Members (PM/Admin only) */}
+      {canManageMembers && (
+        <div className="bg-white rounded-lg border">
+          <button
+            onClick={() => setMembersOpen(!membersOpen)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span className="text-sm font-semibold">Members ({members.length})</span>
+            </div>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${membersOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {membersOpen && (
+            <div className="border-t px-4 py-4 space-y-4">
+              {/* Add member */}
+              <div ref={memberSearchRef} className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={memberSearch}
+                      onChange={(e) => { setMemberSearch(e.target.value); setShowMemberSearch(true); }}
+                      onFocus={() => setShowMemberSearch(true)}
+                      placeholder="Search users to add..."
+                      className="w-full text-xs px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
+                    />
+                    {showMemberSearch && memberSearchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {memberSearchResults.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => handleAddMember(u.id, u.name, u.email)}
+                            disabled={addingMember}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
+                          >
+                            <div className="text-xs font-medium text-gray-900">{u.name}</div>
+                            <div className="text-xs text-gray-500">{u.email}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <select
+                    value={addMemberRole}
+                    onChange={(e) => setAddMemberRole(e.target.value)}
+                    className="text-xs px-2 py-2 border rounded-md"
+                  >
+                    <option value="client">Client</option>
+                    <option value="developer">Developer</option>
+                    <option value="pm">PM</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Members list */}
+              {members.length === 0 ? (
+                <div className="text-xs text-gray-500 text-center py-4">
+                  No members assigned yet. Search above to add members.
+                </div>
+              ) : (
+                <div className="divide-y rounded-md border">
+                  {members.map((m) => (
+                    <div key={m.userId} className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600 flex-shrink-0">
+                        {m.userName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-gray-900 truncate">{m.userName}</div>
+                        <div className="text-xs text-gray-500 truncate">{m.userEmail}</div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        m.role === "pm" ? "bg-purple-100 text-purple-700"
+                          : m.role === "developer" ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {m.role}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveMember(m.userId)}
+                        disabled={removingMemberId === m.userId}
+                        className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50 flex-shrink-0"
+                      >
+                        {removingMemberId === m.userId ? "..." : "Remove"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Invite links */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-700">Invite Links</span>
+                  {(() => {
+                    const hasActiveLink = inviteLinks.some((l) => !l.usedAt && new Date(l.expiresAt) > new Date());
+                    return (
+                      <button
+                        onClick={handleGenerateInviteLink}
+                        disabled={generatingLink || hasActiveLink}
+                        title={hasActiveLink ? "An active invite link already exists for this project" : undefined}
+                        className="text-xs text-ai hover:text-ai/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {generatingLink ? "Generating..." : hasActiveLink ? "Active link exists" : "+ Generate Link"}
+                      </button>
+                    );
+                  })()}
+                </div>
+                {inviteLinks.length === 0 ? (
+                  <div className="text-xs text-gray-400 text-center py-2">
+                    No invite links yet.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {inviteLinks.map((link) => {
+                      const expired = new Date(link.expiresAt) < new Date();
+                      const used = !!link.usedAt;
+                      return (
+                        <div key={link.id} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-3 py-2 border">
+                          <span className="flex-1 font-mono text-gray-600 truncate">
+                            {link.token.substring(0, 16)}...
+                          </span>
+                          {used ? (
+                            <span className="text-green-600 px-1.5 py-0.5 rounded bg-green-50">Used</span>
+                          ) : expired ? (
+                            <span className="text-red-600 px-1.5 py-0.5 rounded bg-red-50">Expired</span>
+                          ) : (
+                            <span className="text-blue-600 px-1.5 py-0.5 rounded bg-blue-50">
+                              Expires {new Date(link.expiresAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {!used && !expired && (
+                            <button
+                              onClick={() => copyInviteLink(link)}
+                              className="text-xs text-ai hover:text-ai/80"
+                            >
+                              {copiedLinkId === link.id ? "Copied!" : "Copy"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

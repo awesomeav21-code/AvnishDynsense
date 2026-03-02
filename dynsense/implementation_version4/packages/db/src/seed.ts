@@ -5,7 +5,7 @@ import {
   taskAssignments, taskDependencies, comments,
   taskChecklists, checklistItems, tags, taskTags,
   notifications, recurringTaskConfigs, taskReminders,
-  auditLog,
+  auditLog, projectMembers,
 } from "./schema/index.js";
 
 const DATABASE_URL = process.env["DATABASE_URL"];
@@ -56,6 +56,7 @@ async function seed() {
 
   // --- Clean existing seed data (preserve tenant and existing users) ---
   console.log("  Cleaning old data...");
+  await db.delete(projectMembers).where(eq(projectMembers.tenantId, tid));
   await db.delete(notifications).where(eq(notifications.tenantId, tid));
   await db.delete(auditLog).where(eq(auditLog.tenantId, tid));
   await db.delete(taskReminders).where(eq(taskReminders.tenantId, tid));
@@ -840,6 +841,36 @@ async function seed() {
     }))
   );
   console.log(`  ${auditEntries.length} audit log entries created`);
+
+  // --- R2: Project Members & Client Visibility ---
+  const frankUser = await db.query.users.findFirst({ where: eq(users.email, "frank@demo.com") });
+  const graceUser = await db.query.users.findFirst({ where: eq(users.email, "grace@demo.com") });
+
+  if (frankUser && graceUser) {
+    // Assign Frank to first 3 projects, Grace to last 3 projects
+    const memberValues = [];
+    for (let i = 0; i < Math.min(3, insertedProjects.length); i++) {
+      memberValues.push({ tenantId: tid, projectId: insertedProjects[i]!.id, userId: frankUser.id, role: "client" });
+    }
+    for (let i = Math.max(0, insertedProjects.length - 3); i < insertedProjects.length; i++) {
+      memberValues.push({ tenantId: tid, projectId: insertedProjects[i]!.id, userId: graceUser.id, role: "client" });
+    }
+    await db.insert(projectMembers).values(memberValues).onConflictDoNothing();
+    console.log(`  ${memberValues.length} project memberships created`);
+  }
+
+  // Mark ~40% of tasks as client-visible (every other task + all completed tasks)
+  let clientVisibleCount = 0;
+  for (let i = 0; i < allTasks.length; i++) {
+    const task = allTasks[i]!;
+    if (i % 2 === 0) {
+      await db.update(tasks).set({ clientVisible: true }).where(eq(tasks.id, task.id));
+      clientVisibleCount++;
+    }
+  }
+  // Also mark completed tasks as client-visible
+  await db.execute(sql`UPDATE tasks SET client_visible = true WHERE tenant_id = ${tid} AND status = 'completed' AND client_visible = false`);
+  console.log(`  ${clientVisibleCount}+ tasks marked as client-visible`);
 
   console.log("\nSeed complete!");
   console.log(`  Tenant: ${existingTenant.name} (${tid})`);

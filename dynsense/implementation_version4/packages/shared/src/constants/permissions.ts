@@ -48,8 +48,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   client: [
     "project:read",
-    "task:create", "task:read", "task:update", "task:delete", "task:assign", "task:transition",
+    "task:read",
     "comment:create", "comment:read",
-    "config:manage",
   ],
 };

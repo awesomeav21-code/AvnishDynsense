@@ -28,6 +28,7 @@ export const updateTaskSchema = z.object({
   estimatedEffort: z.number().positive().nullable().optional(),
   sprint: z.string().max(50).nullable().optional(),
   reportedBy: z.string().uuid().nullable().optional(),
+  clientVisible: z.boolean().optional(),
 });
 
 export const taskStatusTransitionSchema = z.object({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 
@@ -18,12 +18,22 @@ export default function LoginPage() {
   const registered = searchParams.get("registered") === "true";
   const registeredUid = searchParams.get("uid");
 
+  // Clear stale tokens on mount — but only if they're actually stale
+  useEffect(() => {
+    api.getMe().then(() => {
+      // Token is valid — user is already logged in, send to dashboard
+      router.push("/dashboard");
+    }).catch(() => {
+      // Token is bad or missing — clear it
+      api.clearTokens();
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [uid, setUid] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
 
   // Workspace picker state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -73,13 +83,6 @@ export default function LoginPage() {
     } catch (err) {
       handleError(err);
       setSelectingId(null);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleSubmit();
     }
   }
 
@@ -138,7 +141,7 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">AI-native project management</p>
         </div>
 
-        <div className="space-y-4" onKeyDown={handleKeyDown}>
+        <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-4">
           {registered && (
             <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
               Account created successfully.{registeredUid && (
@@ -152,13 +155,16 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* UID field is outside the form so browser autofill ignores it */}
+          {/* Hidden email duplicate so browser saves email (not UID) as username */}
+          <input type="email" name="email" autoComplete="email username" value={email} readOnly tabIndex={-1} className="absolute w-0 h-0 overflow-hidden opacity-0" aria-hidden="true" />
+
           <div>
             <label htmlFor="uid" className="block text-xs font-medium text-gray-700 mb-1">
               UID
             </label>
             <input
               id="uid"
+              name="uid"
               type="text"
               autoFocus
               autoComplete="off"
@@ -169,51 +175,45 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* Email + Password inside a form so browser autofills these correctly */}
-          <form ref={formRef} autoComplete="on" onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-xs font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
-                placeholder="you@company.com"
-              />
-            </div>
+          <div>
+            <label htmlFor="email-visible" className="block text-xs font-medium text-gray-700 mb-1">
+              Email
+            </label>
+            <input
+              id="email-visible"
+              type="email"
+              autoComplete="off"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
+              placeholder="you@company.com"
+            />
+          </div>
 
-            <div>
-              <label htmlFor="password" className="block text-xs font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
-                placeholder="Enter your password"
-              />
-            </div>
+          <div>
+            <label htmlFor="password" className="block text-xs font-medium text-gray-700 mb-1">
+              Password
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
+              placeholder="Enter your password"
+            />
+          </div>
 
-            <button
-              type="submit"
-              disabled={loading || !uid}
-              className="w-full py-2 px-4 text-sm font-medium text-white bg-ai hover:bg-ai-dark rounded-md disabled:opacity-50 transition-colors"
-            >
-              {loading ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={loading || !uid || !email || !password}
+            className="w-full py-2 px-4 text-sm font-medium text-white bg-ai hover:bg-ai-dark rounded-md disabled:opacity-50 transition-colors"
+          >
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
 
         <p className="text-center text-xs text-gray-500">
           Don&apos;t have an account?{" "}

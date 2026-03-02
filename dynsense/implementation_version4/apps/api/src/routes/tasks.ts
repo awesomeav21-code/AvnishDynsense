@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, isNull, sql, ne, inArray, asc, lt } from "drizzle-orm";
-import { tasks, projects, taskDependencies, users } from "@dynsense/db";
+import { tasks, projects, taskDependencies, users, projectMembers } from "@dynsense/db";
 import {
   createTaskSchema, updateTaskSchema,
   taskStatusTransitionSchema, taskFilterSchema,
@@ -35,7 +35,18 @@ export async function taskRoutes(app: FastifyInstance) {
     const { tenantId } = request.jwtPayload;
     const filters = taskFilterSchema.parse(request.query);
 
+    const { role, sub: userId } = request.jwtPayload;
     const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt), isNull(tasks.parentTaskId)];
+
+    // Clients only see client-visible tasks from their assigned projects
+    if (role === "client") {
+      conditions.push(eq(tasks.clientVisible, true));
+      const memberRows = await db.select({ projectId: projectMembers.projectId })
+        .from(projectMembers).where(and(eq(projectMembers.userId, userId), eq(projectMembers.tenantId, tenantId)));
+      const projectIds = memberRows.map((r) => r.projectId);
+      if (projectIds.length === 0) return { data: [] };
+      conditions.push(inArray(tasks.projectId, projectIds));
+    }
 
     if (filters.projectId) conditions.push(eq(tasks.projectId, filters.projectId));
     if (filters.status) conditions.push(eq(tasks.status, filters.status));
@@ -214,7 +225,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   // GET /:id — get task by id with reporter name
   app.get("/:id", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role, sub: userId } = request.jwtPayload;
     const { id } = request.params as { id: string };
 
     const task = await db.query.tasks.findFirst({
@@ -222,6 +233,15 @@ export async function taskRoutes(app: FastifyInstance) {
     });
 
     if (!task) throw AppError.notFound("Task not found");
+
+    // Clients can only view client-visible tasks in their assigned projects
+    if (role === "client") {
+      if (!task.clientVisible) throw AppError.notFound("Task not found");
+      const membership = await db.query.projectMembers.findFirst({
+        where: and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, task.projectId), eq(projectMembers.tenantId, tenantId)),
+      });
+      if (!membership) throw AppError.notFound("Task not found");
+    }
 
     let reporterName: string | null = null;
     if (task.reportedBy) {
@@ -257,6 +277,7 @@ export async function taskRoutes(app: FastifyInstance) {
     if (body.estimatedEffort !== undefined) updateData["estimatedEffort"] = body.estimatedEffort?.toString() ?? null;
     if (body.sprint !== undefined) updateData["sprint"] = body.sprint;
     if (body.reportedBy !== undefined) updateData["reportedBy"] = body.reportedBy;
+    if (body.clientVisible !== undefined) updateData["clientVisible"] = body.clientVisible;
 
     const [updated] = await db.update(tasks)
       .set(updateData)
@@ -386,10 +407,18 @@ export async function taskRoutes(app: FastifyInstance) {
 
   // GET /stats — task counts grouped by status for a project (excludes subtasks)
   app.get("/stats", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role, sub: userId } = request.jwtPayload;
     const { projectId } = request.query as { projectId?: string };
 
     const conditions = [eq(tasks.tenantId, tenantId), isNull(tasks.deletedAt), isNull(projects.deletedAt), isNull(tasks.parentTaskId)];
+    if (role === "client") {
+      conditions.push(eq(tasks.clientVisible, true));
+      const memberRows = await db.select({ projectId: projectMembers.projectId })
+        .from(projectMembers).where(and(eq(projectMembers.userId, userId), eq(projectMembers.tenantId, tenantId)));
+      const projectIds = memberRows.map((r) => r.projectId);
+      if (projectIds.length === 0) return { data: [] };
+      conditions.push(inArray(tasks.projectId, projectIds));
+    }
     if (projectId) conditions.push(eq(tasks.projectId, projectId));
 
     const rows = await db.select({
@@ -434,7 +463,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
   // GET /:id/subtasks — list child tasks
   app.get("/:id/subtasks", async (request) => {
-    const { tenantId } = request.jwtPayload;
+    const { tenantId, role } = request.jwtPayload;
     const { id } = request.params as { id: string };
 
     // Verify parent task exists
@@ -443,12 +472,19 @@ export async function taskRoutes(app: FastifyInstance) {
     });
     if (!parent) throw AppError.notFound("Task not found");
 
+    const conditions = [
+      eq(tasks.parentTaskId, id),
+      eq(tasks.tenantId, tenantId),
+      isNull(tasks.deletedAt),
+    ];
+
+    // Clients only see client-visible subtasks
+    if (role === "client") {
+      conditions.push(eq(tasks.clientVisible, true));
+    }
+
     const subtasks = await db.select().from(tasks)
-      .where(and(
-        eq(tasks.parentTaskId, id),
-        eq(tasks.tenantId, tenantId),
-        isNull(tasks.deletedAt),
-      ))
+      .where(and(...conditions))
       .orderBy(tasks.position);
 
     return { data: subtasks.map(normalizeStatus) };
