@@ -5,11 +5,13 @@ node_modules/
 dist/
 .next/
 .turbo/
+*.tsbuildinfo
 
 # Environment
 .env
 .env.local
 .env.*.local
+.env.production
 *.pem
 
 # OS
