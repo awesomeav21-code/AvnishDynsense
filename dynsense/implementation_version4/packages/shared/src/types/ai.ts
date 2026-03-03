@@ -7,6 +7,7 @@ export type AiCapability =
   | "risk_predictor"
   | "ai_pm_agent"
   | "scope_detector"
+  | "task_decomposition"
   | "writing_assistant"
   | "sow_generator"
   | "learning_agent";

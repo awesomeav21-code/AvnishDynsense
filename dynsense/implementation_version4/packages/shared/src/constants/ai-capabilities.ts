@@ -70,10 +70,21 @@ export const R1_SUBAGENTS: readonly SubagentConfig[] = [
   },
 ];
 
-// Combined R0 + R1 subagents for orchestrator validation
+export const R2_SUBAGENTS: readonly SubagentConfig[] = [
+  {
+    capability: "task_decomposition",
+    model: "sonnet",
+    permissionMode: "default",
+    maxTurns: 5,
+    readOnly: false,
+  },
+];
+
+// Combined R0 + R1 + R2 subagents for orchestrator validation
 export const ALL_SUBAGENTS: readonly SubagentConfig[] = [
   ...R0_SUBAGENTS,
   ...R1_SUBAGENTS,
+  ...R2_SUBAGENTS,
 ];
 
 export const AI_CONFIDENCE_THRESHOLD = 0.6;

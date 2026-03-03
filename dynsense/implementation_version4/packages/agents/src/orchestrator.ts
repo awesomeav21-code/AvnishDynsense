@@ -75,6 +75,17 @@ const DEFAULT_TOKEN_BUDGET = 180_000;
 // Capability → Agent config mapping
 // ---------------------------------------------------------------------------
 
+const taskDecompositionConfig: AgentConfig = {
+  name: "task-decomposition",
+  capability: "task_decomposition",
+  model: "sonnet",
+  permissionMode: "default",
+  maxTurns: 5,
+  readOnly: false,
+  allowedMcpServers: [],
+  systemPrompt: "You are a project management assistant. Given a task title and description, break it down into 3-5 concrete, actionable subtasks. Return ONLY valid JSON: { \"subtasks\": [\"subtask title 1\", \"subtask title 2\", ...] }. Keep subtask titles short and specific.",
+};
+
 const CAPABILITY_CONFIGS: Record<string, AgentConfig> = {
   wbs_generator: wbsGeneratorConfig,
   whats_next: whatsNextConfig,
@@ -83,6 +94,7 @@ const CAPABILITY_CONFIGS: Record<string, AgentConfig> = {
   risk_predictor: riskPredictorConfig,
   ai_pm_agent: aiPmAgentConfig,
   scope_detector: scopeDetectorConfig,
+  task_decomposition: taskDecompositionConfig,
 };
 
 // Model name mapping: our internal model names → Anthropic model IDs
@@ -633,6 +645,17 @@ export class AIOrchestrator {
           "Return as JSON: { baselineTaskCount: number, currentTaskCount: number, addedTasks: string[], removedTasks: string[], scopeVariancePercent: number, assessment: string }",
         ].join("\n");
 
+      case "task_decomposition":
+        return [
+          "Break down the following task into 3-5 concrete, actionable subtasks:",
+          "",
+          `Task Title: ${String(input["title"] ?? "")}`,
+          `Task Description: ${String(input["description"] ?? "")}`,
+          `Priority: ${String(input["priority"] ?? "medium")}`,
+          "",
+          'Return ONLY valid JSON: { "subtasks": ["subtask title 1", "subtask title 2", ...] }',
+        ].join("\n");
+
       default:
         return `Process the following input for capability '${capability}':\n\n${JSON.stringify(input)}`;
     }
@@ -687,6 +710,7 @@ export class AIOrchestrator {
       risk_predictor: "ask_human",
       ai_pm_agent: "skip",
       scope_detector: "ask_human",
+      task_decomposition: "use_template",
     };
     return strategies[capability] ?? "ask_human";
   }
@@ -871,6 +895,17 @@ export class AIOrchestrator {
           scopeVariancePercent: 16.7,
           assessment: "Moderate scope creep detected: 4 tasks added beyond baseline WBS.",
           note: "Stub output — set ANTHROPIC_API_KEY for real scope analysis.",
+        };
+      case "task_decomposition":
+        return {
+          type: "task_decomposition",
+          subtasks: [
+            `Research and plan: ${String(input["title"] ?? "task")}`,
+            `Implement core logic`,
+            `Write tests and validate`,
+            `Review and polish`,
+          ],
+          note: "Stub output — set ANTHROPIC_API_KEY for AI-generated subtasks.",
         };
       default:
         return {

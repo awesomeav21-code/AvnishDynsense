@@ -18,13 +18,13 @@ export default function LoginPage() {
   const registered = searchParams.get("registered") === "true";
   const registeredUid = searchParams.get("uid");
 
-  // Clear stale tokens on mount — but only if they're actually stale
+  // On mount: if user has a valid session, redirect to dashboard; otherwise clear stale tokens
   useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token) return;
     api.getMe().then(() => {
-      // Token is valid — user is already logged in, send to dashboard
       router.push("/dashboard");
     }).catch(() => {
-      // Token is bad or missing — clear it
       api.clearTokens();
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -55,8 +55,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
+    const trimmedUid = uid.trim();
+    const trimmedEmail = email.trim();
+
     try {
-      const res = await api.loginIdentify(uid, email, password);
+      const res = await api.loginIdentify(trimmedUid, trimmedEmail, password);
 
       if (!res.requiresWorkspaceSelection && res.accessToken && res.refreshToken) {
         api.setTokens(res.accessToken, res.refreshToken);
@@ -77,7 +80,7 @@ export default function LoginPage() {
     setSelectingId(tenantId);
 
     try {
-      const res = await api.loginSelect(uid, email, password, tenantId);
+      const res = await api.loginSelect(uid.trim(), email.trim(), password, tenantId);
       api.setTokens(res.accessToken, res.refreshToken);
       router.push("/dashboard");
     } catch (err) {

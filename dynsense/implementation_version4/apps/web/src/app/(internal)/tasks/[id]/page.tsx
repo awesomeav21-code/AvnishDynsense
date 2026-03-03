@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
@@ -91,9 +91,10 @@ function SubtaskNode({
   statusColors: Record<string, string>;
   users: User[];
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const hasInitialChildren = (subtask.children ?? []).length > 0;
+  const [expanded, setExpanded] = useState(hasInitialChildren);
   const [children, setChildren] = useState<Subtask[]>(subtask.children ?? []);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(hasInitialChildren);
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [adding, setAdding] = useState(false);
@@ -419,9 +420,24 @@ function SubtaskNode({
   );
 }
 
-export default function TaskDetailPage() {
+export default function TaskDetailPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-4">
+        <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
+        <div className="h-48 bg-white rounded-lg border animate-pulse" />
+      </div>
+    }>
+      <TaskDetailPage />
+    </Suspense>
+  );
+}
+
+function TaskDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const taskId = params.id as string;
+  const fromPage = searchParams.get("from");
 
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -543,8 +559,26 @@ export default function TaskDetailPage() {
           setPhases(res.data as Phase[]);
         }).catch(() => {});
 
-        api.request<{ data: Subtask[] }>(`/tasks/${taskId}/subtasks`).then((res) => {
-          setSubtasks(res.data);
+        api.request<{ data: Subtask[] }>(`/tasks/${taskId}/subtasks`).then(async (res) => {
+          async function loadTree(items: Subtask[], depth: number): Promise<Subtask[]> {
+            if (depth > 3) return items;
+            return Promise.all(
+              items.map(async (st) => {
+                try {
+                  const childRes = await api.request<{ data: Subtask[] }>(`/tasks/${st.id}/subtasks`);
+                  if (childRes.data.length > 0) {
+                    const nested = await loadTree(childRes.data, depth + 1);
+                    return { ...st, children: nested };
+                  }
+                  return { ...st, children: [] };
+                } catch {
+                  return st;
+                }
+              })
+            );
+          }
+          const withChildren = await loadTree(res.data, 1);
+          setSubtasks(withChildren);
         }).catch(() => {});
 
       } catch {
@@ -599,17 +633,75 @@ export default function TaskDetailPage() {
     }
   }
 
+  async function generateChildrenRecursive(
+    parentId: string,
+    parentTitle: string,
+    projId: string,
+    priority: string,
+    depth: number,
+  ): Promise<Subtask[]> {
+    if (depth >= 3) return [];
+    try {
+      const aiRes = await api.executeAi("task_decomposition", {
+        taskId: parentId,
+        title: parentTitle,
+        description: parentTitle,
+        priority,
+      });
+      const output = aiRes.data?.output as { subtasks?: string[] } | undefined;
+      if (!output?.subtasks || output.subtasks.length === 0) return [];
+
+      const subtaskStatuses = ["created", "ready", "in_progress", "review", "completed"];
+      const results = await Promise.allSettled(
+        output.subtasks.map((t: string) =>
+          api.createTask({ projectId: projId, title: t, priority, parentTaskId: parentId })
+        )
+      );
+      await Promise.allSettled(
+        results.map((r, i) => {
+          if (r.status !== "fulfilled") return Promise.resolve();
+          const status = subtaskStatuses[i % subtaskStatuses.length]!;
+          if (status === "created") return Promise.resolve();
+          return api.updateTaskStatus(r.value.data.id, status);
+        })
+      );
+
+      const created = results.filter(
+        (r): r is PromiseFulfilledResult<{ data: { id: string; title: string } }> => r.status === "fulfilled"
+      );
+
+      // Recursively generate children for each created subtask
+      return Promise.all(
+        created.map(async (r, i) => {
+          const children = await generateChildrenRecursive(r.value.data.id, r.value.data.title, projId, priority, depth + 1);
+          return {
+            id: r.value.data.id,
+            title: r.value.data.title,
+            status: subtaskStatuses[i % subtaskStatuses.length]!,
+            children,
+          };
+        })
+      );
+    } catch (err) {
+      console.error("AI subtask generation failed:", err);
+      return [];
+    }
+  }
+
   async function handleAddSubtask() {
     if (!newSubtaskTitle.trim() || !task) return;
     setAddingSubtask(true);
     try {
+      const title = newSubtaskTitle.trim();
       const res = await api.createTask({
         projectId: task.projectId,
-        title: newSubtaskTitle.trim(),
+        title,
         parentTaskId: taskId,
         priority: task.priority,
       });
-      setSubtasks((prev) => [...prev, { id: res.data.id, title: res.data.title, status: "created" }]);
+
+      const children = await generateChildrenRecursive(res.data.id, title, task.projectId, task.priority, 1);
+      setSubtasks((prev) => [...prev, { id: res.data.id, title: res.data.title, status: "created", children }]);
       setNewSubtaskTitle("");
     } catch {
       setError("Failed to add subtask");
@@ -655,9 +747,15 @@ export default function TaskDetailPage() {
     <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
-        <span>/</span>
-        <Link href={`/projects/${task.projectId}`} className="hover:text-gray-700">{projectName || "Project"}</Link>
+        {fromPage === "my-tasks" ? (
+          <Link href="/my-tasks" className="hover:text-gray-700">My Tasks</Link>
+        ) : (
+          <>
+            <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
+            <span>/</span>
+            <Link href={`/projects/${task.projectId}`} className="hover:text-gray-700">{projectName || "Project"}</Link>
+          </>
+        )}
         <span>/</span>
         <span className="text-gray-900 truncate max-w-[200px]">{task.title}</span>
       </div>
@@ -768,41 +866,38 @@ export default function TaskDetailPage() {
           {/* Subtasks (recursive tree) */}
           <div className="bg-white rounded-lg border p-6">
             <h2 className="text-sm font-semibold mb-3">Subtasks</h2>
-            {subtasks.length > 0 && (
-              <div className="space-y-1.5 mb-3">
-                {subtasks.map((st) => (
-                  <SubtaskNode
-                    key={st.id}
-                    subtask={st}
-                    projectId={task.projectId}
-                    parentPriority={task.priority}
-                    depth={1}
-                    statusColors={statusColors}
-                    users={users}
-                  />
-                ))}
-              </div>
-            )}
-            {!isReadOnly && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newSubtaskTitle}
-                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddSubtask()}
-                  placeholder="Add a subtask..."
-                  className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+            <div className="space-y-1.5">
+              {subtasks.map((st) => (
+                <SubtaskNode
+                  key={st.id}
+                  subtask={st}
+                  projectId={task.projectId}
+                  parentPriority={task.priority}
+                  depth={1}
+                  statusColors={statusColors}
+                  users={users}
                 />
-                <button
-                  onClick={handleAddSubtask}
-                  disabled={addingSubtask || !newSubtaskTitle.trim()}
-                  className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
-                >
-                  {addingSubtask ? "..." : "Add"}
-                </button>
-              </div>
-            )}
-
+              ))}
+              {!isReadOnly && (
+                <div className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newSubtaskTitle}
+                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddSubtask()}
+                    placeholder="Add a subtask..."
+                    className="flex-1 px-3 py-2 text-xs border rounded-md focus:outline-none focus:ring-1 focus:ring-ai/50"
+                  />
+                  <button
+                    onClick={handleAddSubtask}
+                    disabled={addingSubtask || !newSubtaskTitle.trim()}
+                    className="px-3 py-2 text-xs font-medium text-white bg-ai rounded-md disabled:opacity-50"
+                  >
+                    {addingSubtask ? "..." : "Add"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Checklists */}

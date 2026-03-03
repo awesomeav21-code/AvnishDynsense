@@ -31,7 +31,8 @@ class ApiClient {
 
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-    if (res.status === 401 && this.getRefreshToken()) {
+    const isAuthRoute = path.startsWith("/auth/login") || path.startsWith("/auth/register");
+    if (res.status === 401 && this.getRefreshToken() && !isAuthRoute) {
       const refreshed = await this.tryRefresh();
       if (refreshed) {
         headers["Authorization"] = `Bearer ${this.getToken()}`;
@@ -128,7 +129,7 @@ class ApiClient {
     });
   }
 
-  register(data: { email: string; password: string; name: string; workspaceName: string }) {
+  register(data: { uid: string; email: string; password: string; name: string }) {
     return this.request<{
       accessToken: string;
       refreshToken: string;

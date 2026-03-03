@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import bcrypt from "bcrypt";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { users, tenants, accounts } from "@dynsense/db";
 import { loginSchema, loginStep1Schema, loginStep2Schema, switchWorkspaceSchema, refreshTokenSchema } from "@dynsense/shared";
 import { z } from "zod";
@@ -16,10 +16,10 @@ export async function authRoutes(app: FastifyInstance) {
 
   // Local register schema
   const localRegisterSchema = z.object({
+    uid: z.string().min(1).max(50),
     email: z.string().email(),
     password: z.string().min(8).max(128),
     name: z.string().min(1).max(255),
-    workspaceName: z.string().min(1).max(100),
   });
 
   // Helper: build JWT payload and issue tokens
@@ -55,19 +55,26 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/register", async (request, reply) => {
     const body = localRegisterSchema.parse(request.body);
 
-    const slug = body.workspaceName
+    // Check if UID is already taken
+    const existingAccount = await db.query.accounts.findFirst({
+      where: eq(accounts.uid, body.uid),
+    });
+    if (existingAccount) throw AppError.conflict("This UID is already taken");
+
+    // Derive workspace slug from user's name
+    const slug = body.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-    if (!slug) throw AppError.badRequest("Invalid workspace name");
+    if (!slug) throw AppError.badRequest("Invalid name for workspace");
 
     const existingTenant = await db.query.tenants.findFirst({
       where: eq(tenants.slug, slug),
     });
-    if (existingTenant) throw AppError.conflict("Workspace name is already taken");
+    if (existingTenant) throw AppError.conflict("A workspace for this name already exists");
 
-    // Check for existing global account
+    // Check for existing global account by email
     let account = await db.query.accounts.findFirst({
       where: eq(accounts.email, body.email),
     });
@@ -77,11 +84,10 @@ export async function authRoutes(app: FastifyInstance) {
       const valid = await bcrypt.compare(body.password, account.passwordHash);
       if (!valid) throw AppError.unauthorized("An account with this email already exists. Please enter your existing password to create a new workspace.");
     } else {
-      // New identity — generate a unique UID
+      // New identity — use the user-provided UID
       const passwordHash = await bcrypt.hash(body.password, 12);
-      const uid = `DS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       const [created] = await db.insert(accounts).values({
-        uid,
+        uid: body.uid,
         email: body.email,
         passwordHash,
         name: body.name,
@@ -89,9 +95,9 @@ export async function authRoutes(app: FastifyInstance) {
       account = created!;
     }
 
-    // Create workspace
+    // Create workspace (named after user)
     const [tenant] = await db.insert(tenants).values({
-      name: body.workspaceName,
+      name: `${body.name}'s Workspace`,
       slug,
       planTier: "starter",
     }).returning();
@@ -122,17 +128,30 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/login/identify", async (request, reply) => {
     const body = loginStep1Schema.parse(request.body);
 
-    // Look up account by UID
-    const account = await db.query.accounts.findFirst({
-      where: eq(accounts.uid, body.uid),
-    });
-    if (!account) throw AppError.unauthorized("Invalid UID, email, or password");
+    console.log("[LOGIN DEBUG] Received:", { uid: body.uid, email: body.email, passwordLength: body.password.length });
 
-    // Verify email matches the account
-    if (account.email !== body.email) throw AppError.unauthorized("Invalid UID, email, or password");
+    // Look up account by UID (case-insensitive)
+    const account = await db.query.accounts.findFirst({
+      where: sql`LOWER(${accounts.uid}) = LOWER(${body.uid})`,
+    });
+    if (!account) {
+      console.log("[LOGIN DEBUG] No account found for UID:", body.uid);
+      throw AppError.unauthorized("Invalid UID, email, or password");
+    }
+
+    console.log("[LOGIN DEBUG] Found account:", { uid: account.uid, email: account.email });
+
+    // Verify email matches the account (case-insensitive)
+    if (account.email.toLowerCase() !== body.email.toLowerCase()) {
+      console.log("[LOGIN DEBUG] Email mismatch — got:", body.email, "expected:", account.email);
+      throw AppError.unauthorized("Invalid UID, email, or password");
+    }
 
     const valid = await bcrypt.compare(body.password, account.passwordHash);
-    if (!valid) throw AppError.unauthorized("Invalid UID, email, or password");
+    if (!valid) {
+      console.log("[LOGIN DEBUG] Password mismatch for UID:", body.uid);
+      throw AppError.unauthorized("Invalid UID, email, or password");
+    }
 
     const workspaces = await getWorkspaces(account.id);
 
@@ -177,11 +196,11 @@ export async function authRoutes(app: FastifyInstance) {
     const body = loginStep2Schema.parse(request.body);
 
     const account = await db.query.accounts.findFirst({
-      where: eq(accounts.uid, body.uid),
+      where: sql`LOWER(${accounts.uid}) = LOWER(${body.uid})`,
     });
     if (!account) throw AppError.unauthorized("Invalid credentials");
 
-    if (account.email !== body.email) throw AppError.unauthorized("Invalid credentials");
+    if (account.email.toLowerCase() !== body.email.toLowerCase()) throw AppError.unauthorized("Invalid credentials");
 
     const valid = await bcrypt.compare(body.password, account.passwordHash);
     if (!valid) throw AppError.unauthorized("Invalid credentials");

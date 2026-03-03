@@ -6,7 +6,7 @@ export const aiExecuteSchema = z.object({
   capability: z.enum([
     "wbs_generator", "whats_next", "nl_query", "summary_writer",
     "risk_predictor", "ai_pm_agent", "scope_detector",
-    "writing_assistant", "sow_generator", "learning_agent",
+    "task_decomposition", "writing_assistant", "sow_generator", "learning_agent",
   ]),
   input: z.record(z.unknown()),
   sessionId: z.string().uuid().optional(),

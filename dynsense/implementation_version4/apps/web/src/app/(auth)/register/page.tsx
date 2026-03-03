@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [workspaceName, setWorkspaceName] = useState("");
+  const [uid, setUid] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,7 +19,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await api.register({ email, password, name, workspaceName });
+      const res = await api.register({ uid, email, password, name });
       router.push(`/login?registered=true&uid=${encodeURIComponent(res.uid)}`);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -54,17 +54,17 @@ export default function RegisterPage() {
           </p>
 
           <div>
-            <label htmlFor="workspaceName" className="block text-xs font-medium text-gray-700 mb-1">
-              Workspace Name
+            <label htmlFor="uid" className="block text-xs font-medium text-gray-700 mb-1">
+              UID
             </label>
             <input
-              id="workspaceName"
+              id="uid"
               type="text"
               required
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai"
-              placeholder="My Company"
+              value={uid}
+              onChange={(e) => setUid(e.target.value)}
+              className="w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50 focus:border-ai font-mono"
+              placeholder="e.g. DS-AVNISH"
             />
           </div>
 

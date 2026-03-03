@@ -247,29 +247,9 @@ function MyTasksContent() {
     }
   }, [addAsSubtaskId, loading]);
 
-  // Search existing tasks for subtask linking
-  useEffect(() => {
-    if (!existingTaskSearch.trim()) {
-      setExistingTaskResults([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.request<{ data: Array<{ id: string; title: string; projectId?: string }> }>(`/search?q=${encodeURIComponent(existingTaskSearch.trim())}&limit=5&type=tasks`);
-        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
-        setExistingTaskResults(res.data.filter((t) => !alreadyAdded.has(t.id)));
-      } catch {
-        // Fallback: filter from loaded tasks
-        const q = existingTaskSearch.trim().toLowerCase();
-        const alreadyAdded = new Set(existingSubtasks.map((t) => t.id));
-        setExistingTaskResults(tasks.filter((t) => t.title.toLowerCase().includes(q) && !alreadyAdded.has(t.id)).slice(0, 5));
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [existingTaskSearch, existingSubtasks, tasks]);
 
   const handleCreateTask = useCallback(async () => {
-    if (!newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0) return;
+    if (!newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || !newComment.trim() || selectedTagIds.size === 0) return;
     setCreating(true);
     try {
       const effort = newEstimatedEffort ? parseFloat(newEstimatedEffort) : undefined;
@@ -291,38 +271,39 @@ function MyTasksContent() {
         await api.assignTask(res.data.id, newAssigneeId).catch(() => {});
       }
 
-      // Create subtasks
-      if (subtasks.length > 0) {
-        await Promise.allSettled(
-          subtasks.map((title) =>
-            api.createTask({
-              projectId: newProjectId,
-              title,
-              priority: newPriority,
-              parentTaskId: res.data.id,
+      // Auto-generate subtasks via AI based on task title + description
+      try {
+        const aiRes = await api.executeAi("task_decomposition", {
+          taskId: res.data.id,
+          title: newTitle.trim(),
+          description: newDescription.trim(),
+          priority: newPriority,
+        });
+        const output = aiRes.data?.output as { subtasks?: string[] } | undefined;
+        if (output?.subtasks && output.subtasks.length > 0) {
+          const subtaskStatuses = ["created", "ready", "in_progress", "review", "completed"];
+          const results = await Promise.allSettled(
+            output.subtasks.map((title: string) =>
+              api.createTask({
+                projectId: newProjectId,
+                title,
+                priority: newPriority,
+                parentTaskId: res.data.id,
+              })
+            )
+          );
+          // Assign varied statuses to subtasks
+          await Promise.allSettled(
+            results.map((r, i) => {
+              if (r.status !== "fulfilled") return Promise.resolve();
+              const status = subtaskStatuses[i % subtaskStatuses.length]!;
+              if (status === "created") return Promise.resolve();
+              return api.updateTaskStatus(r.value.data.id, status);
             })
-          )
-        );
-      }
-
-      // Demote existing tasks as subtasks
-      const taskIdsTodemote = existingSubtasks.map((t) => t.id);
-      if (addAsSubtaskId && !taskIdsTodemote.includes(addAsSubtaskId)) {
-        taskIdsTodemote.push(addAsSubtaskId);
-      }
-      if (taskIdsTodemote.length > 0) {
-        const demoteResults = await Promise.allSettled(
-          taskIdsTodemote.map((id) =>
-            api.request(`/tasks/${id}/demote`, {
-              method: "POST",
-              body: JSON.stringify({ parentTaskId: res.data.id }),
-            })
-          )
-        );
-        const failCount = demoteResults.filter((r) => r.status === "rejected").length;
-        if (failCount > 0) {
-          setError(`Task created, but ${failCount} existing subtask${failCount > 1 ? "s" : ""} could not be linked.`);
+          );
         }
+      } catch (err) {
+        console.error("AI subtask generation failed:", err);
       }
 
       // Attach selected tags
@@ -676,105 +657,11 @@ function MyTasksContent() {
             )}
           </div>
 
-          {/* Subtasks */}
+          {/* Subtasks — auto-generated */}
           <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks <span className="text-red-500">*</span></label>
-            {(subtasks.length > 0 || existingSubtasks.length > 0) && (
-              <div className="space-y-1 mb-2">
-                {existingSubtasks.map((et) => (
-                  <div key={et.id} className="flex items-center gap-2 text-xs bg-blue-50 rounded px-2 py-1.5 border border-blue-200">
-                    <svg className="w-3 h-3 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                    </svg>
-                    <span className="flex-1 text-blue-700 truncate">{et.title}</span>
-                    <span className="text-[10px] text-blue-400">existing</span>
-                    <button
-                      type="button"
-                      onClick={() => setExistingSubtasks((prev) => prev.filter((t) => t.id !== et.id))}
-                      className="text-blue-400 hover:text-red-500 flex-shrink-0"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-                {subtasks.map((st, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 rounded px-2 py-1.5 border">
-                    <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="flex-1 text-gray-700 truncate">{st}</span>
-                    <button
-                      type="button"
-                      onClick={() => setSubtasks((prev) => prev.filter((_, i) => i !== idx))}
-                      className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={subtaskInput}
-                onChange={(e) => setSubtaskInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && subtaskInput.trim()) {
-                    e.preventDefault();
-                    setSubtasks((prev) => [...prev, subtaskInput.trim()]);
-                    setSubtaskInput("");
-                  }
-                }}
-                placeholder="Add a new subtask and press Enter..."
-                className="flex-1 text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (subtaskInput.trim()) {
-                    setSubtasks((prev) => [...prev, subtaskInput.trim()]);
-                    setSubtaskInput("");
-                  }
-                }}
-                disabled={!subtaskInput.trim()}
-                className="px-2 py-1.5 text-xs text-gray-600 border rounded-md hover:bg-gray-50 disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-            {/* Link existing task as subtask */}
-            <div className="relative mt-2">
-              <input
-                type="text"
-                value={existingTaskSearch}
-                onChange={(e) => { setExistingTaskSearch(e.target.value); setShowExistingSearch(true); }}
-                onFocus={() => setShowExistingSearch(true)}
-                placeholder="Search existing task to add as subtask..."
-                className="w-full text-xs px-2 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ai/50"
-              />
-              {showExistingSearch && existingTaskResults.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                  {existingTaskResults.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        setExistingSubtasks((prev) => [...prev, { id: t.id, title: t.title }]);
-                        setExistingTaskSearch("");
-                        setShowExistingSearch(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b last:border-b-0"
-                    >
-                      {t.title}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wider block mb-1">Subtasks</label>
+            <div className="border rounded-md p-3 bg-gray-50">
+              <p className="text-xs text-gray-500">Subtasks will be automatically generated from the task title and description.</p>
             </div>
           </div>
 
@@ -801,7 +688,7 @@ function MyTasksContent() {
             </button>
             <button
               onClick={handleCreateTask}
-              disabled={creating || !newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || (subtasks.length === 0 && existingSubtasks.length === 0) || !newComment.trim() || selectedTagIds.size === 0}
+              disabled={creating || !newTitle.trim() || !newProjectId || !newDescription.trim() || !newPhaseId || !newAssigneeId || !newReportedBy || !newStartDate || !newDueDate || !newEstimatedEffort || !newComment.trim() || selectedTagIds.size === 0}
               className="px-4 py-1.5 text-xs font-medium text-white bg-ai rounded-md hover:bg-ai/90 disabled:opacity-50 transition-colors"
             >
               {creating ? "Creating..." : "Create Task"}
@@ -841,7 +728,7 @@ function MyTasksContent() {
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                       <h3 className="text-xs font-semibold text-red-700 mb-2">Overdue ({overdueTasks.length})</h3>
                       {(expandedOverdue ? overdueTasks : overdueTasks.slice(0, 3)).map((t) => (
-                        <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
+                        <Link key={t.id} href={`/tasks/${t.id}?from=my-tasks`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
                           {t.title}
                         </Link>
                       ))}
@@ -856,7 +743,7 @@ function MyTasksContent() {
                     <div className="bg-red-50/70 border border-red-300 rounded-lg p-4">
                       <h3 className="text-xs font-semibold text-red-700 mb-2">Critical Priority ({criticalTasks.length})</h3>
                       {(expandedCritical ? criticalTasks : criticalTasks.slice(0, 3)).map((t) => (
-                        <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
+                        <Link key={t.id} href={`/tasks/${t.id}?from=my-tasks`} className="block text-xs text-red-600 hover:text-red-800 truncate py-0.5">
                           {t.title}
                         </Link>
                       ))}
@@ -871,7 +758,7 @@ function MyTasksContent() {
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                       <h3 className="text-xs font-semibold text-orange-700 mb-2">High Priority ({highPriorityTasks.length})</h3>
                       {(expandedHigh ? highPriorityTasks : highPriorityTasks.slice(0, 3)).map((t) => (
-                        <Link key={t.id} href={`/tasks/${t.id}`} className="block text-xs text-orange-600 hover:text-orange-800 truncate py-0.5">
+                        <Link key={t.id} href={`/tasks/${t.id}?from=my-tasks`} className="block text-xs text-orange-600 hover:text-orange-800 truncate py-0.5">
                           {t.title}
                         </Link>
                       ))}
@@ -966,7 +853,7 @@ function MyTasksContent() {
                         }`}
                       >
                         <div className="flex-1 min-w-0">
-                          <Link href={`/tasks/${task.id}`} className="text-sm font-medium text-gray-900 truncate hover:text-ai transition-colors block">
+                          <Link href={`/tasks/${task.id}?from=my-tasks`} className="text-sm font-medium text-gray-900 truncate hover:text-ai transition-colors block">
                             {task.title}
                           </Link>
                         </div>
