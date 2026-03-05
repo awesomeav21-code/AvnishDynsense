@@ -1,3 +1,4 @@
+// R1-DEFERRED — not included in R0 launch
 // Ref: FR-1204 — Self-service client onboarding via invite links
 import { pgTable, uuid, varchar, timestamp, index } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";

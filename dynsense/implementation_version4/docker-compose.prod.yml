@@ -41,21 +41,6 @@ services:
     ports:
       - "6379:6379"
 
-  nats:
-    image: nats:2.10-alpine
-    container_name: dynsense-nats
-    restart: unless-stopped
-    command: --jetstream --store_dir /data --http_port 8222
-    volumes:
-      - nats_data:/data
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    ports:
-      - "4222:4222"
-
   api:
     build:
       context: .
@@ -66,7 +51,6 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-dynsense}:${POSTGRES_PASSWORD:-dynsense_prod}@postgres:5432/${POSTGRES_DB:-dynsense}
       REDIS_URL: redis://:${REDIS_PASSWORD:-dynsense_redis}@redis:6379
-      NATS_URL: nats://nats:4222
       API_PORT: 3001
       API_HOST: 0.0.0.0
       JWT_SECRET: ${JWT_SECRET:-dynsense-local-dev-secret}
@@ -74,8 +58,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      nats:
         condition: service_healthy
     ports:
       - "3001:3001"
@@ -100,4 +82,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  nats_data:

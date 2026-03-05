@@ -5,6 +5,8 @@ import { createCommentSchema, updateCommentSchema } from "@dynsense/shared";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
+import { pgNotify } from "../plugins/pg-events.js";
+import { PG_CHANNELS } from "@dynsense/shared";
 import type { Env } from "../config/env.js";
 import { z } from "zod";
 
@@ -69,6 +71,13 @@ export async function commentRoutes(app: FastifyInstance) {
         mentionIds.map((userId) => ({ commentId: comment!.id, userId }))
       ).onConflictDoNothing();
     }
+
+    // PostgreSQL NOTIFY — comment added
+    pgNotify(env.DATABASE_URL, PG_CHANNELS.COMMENTS_ADDED, {
+      tenantId,
+      event: "comment_added",
+      data: { commentId: comment!.id, taskId: body.taskId, authorId: sub, hasMentions: mentionIds.length > 0 },
+    }).catch(() => {});
 
     reply.status(201).send({ data: comment });
   });

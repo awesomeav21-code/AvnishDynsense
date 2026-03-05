@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
 
+
 export default function JoinPage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();

@@ -4,8 +4,7 @@ import {
   tenants, users, accounts, projects, phases, tasks,
   taskAssignments, taskDependencies, comments,
   taskChecklists, checklistItems, tags, taskTags,
-  notifications, recurringTaskConfigs, taskReminders,
-  auditLog, projectMembers,
+  auditLog, projectMembers, priorities, taskStatuses,
 } from "./schema/index.js";
 
 const DATABASE_URL = process.env["DATABASE_URL"];
@@ -57,10 +56,7 @@ async function seed() {
   // --- Clean existing seed data (preserve tenant and existing users) ---
   console.log("  Cleaning old data...");
   await db.delete(projectMembers).where(eq(projectMembers.tenantId, tid));
-  await db.delete(notifications).where(eq(notifications.tenantId, tid));
   await db.delete(auditLog).where(eq(auditLog.tenantId, tid));
-  await db.delete(taskReminders).where(eq(taskReminders.tenantId, tid));
-  await db.delete(recurringTaskConfigs).where(eq(recurringTaskConfigs.tenantId, tid));
   await db.delete(taskTags).where(
     sql`task_id IN (SELECT id FROM tasks WHERE tenant_id = ${tid})`
   );
@@ -77,6 +73,8 @@ async function seed() {
   await db.delete(phases).where(eq(phases.tenantId, tid));
   await db.delete(projects).where(eq(projects.tenantId, tid));
   await db.delete(tags).where(eq(tags.tenantId, tid));
+  await db.delete(priorities).where(eq(priorities.tenantId, tid));
+  await db.delete(taskStatuses).where(eq(taskStatuses.tenantId, tid));
 
   // --- Ensure 7 loginable seed users + 1993 bulk users = 2000 total ---
   const seedUserDefs = [
@@ -254,6 +252,32 @@ async function seed() {
     tagDefs.map((t) => ({ tenantId: tid, name: t.name, color: t.color }))
   ).returning();
   console.log(`  ${insertedTags.length} tags created`);
+
+  // --- Priorities (lookup table) ---
+  const priorityDefs = [
+    { name: "critical", position: 0, color: "#DC2626" },
+    { name: "high", position: 1, color: "#F97316" },
+    { name: "medium", position: 2, color: "#EAB308" },
+    { name: "low", position: 3, color: "#22C55E" },
+  ];
+  const insertedPriorities = await db.insert(priorities).values(
+    priorityDefs.map((p) => ({ tenantId: tid, ...p }))
+  ).returning();
+  console.log(`  ${insertedPriorities.length} priorities created`);
+
+  // --- Task Statuses (lookup table) ---
+  const statusDefs = [
+    { name: "created", position: 0, color: "#9CA3AF", isFinal: "false" },
+    { name: "in_progress", position: 1, color: "#3B82F6", isFinal: "false" },
+    { name: "in_review", position: 2, color: "#8B5CF6", isFinal: "false" },
+    { name: "blocked", position: 3, color: "#EF4444", isFinal: "false" },
+    { name: "completed", position: 4, color: "#22C55E", isFinal: "true" },
+    { name: "cancelled", position: 5, color: "#6B7280", isFinal: "true" },
+  ];
+  const insertedStatuses = await db.insert(taskStatuses).values(
+    statusDefs.map((s) => ({ tenantId: tid, ...s }))
+  ).returning();
+  console.log(`  ${insertedStatuses.length} task statuses created`);
 
   // --- Projects ---
   const projectDefs = [
@@ -728,92 +752,7 @@ async function seed() {
 
   console.log(`  ${allTasks.length} tasks created across ${insertedProjects.length} projects`);
 
-  // --- Recurring Tasks ---
-  await db.insert(recurringTaskConfigs).values([
-    {
-      tenantId: tid,
-      projectId: insertedProjects[0]!.id,
-      title: "Weekly standup notes",
-      description: "Summarize weekly standup discussion points and action items",
-      priority: "medium",
-      schedule: "weekly",
-      cronExpression: "0 9 * * 1",
-      enabled: true,
-      createdBy: allUsers[1]?.id ?? allUsers[0]!.id,
-    },
-    {
-      tenantId: tid,
-      projectId: insertedProjects[0]!.id,
-      title: "Monthly security review",
-      description: "Review security logs, update dependencies, and run vulnerability scans",
-      priority: "high",
-      schedule: "monthly",
-      cronExpression: "0 10 1 * *",
-      enabled: true,
-      createdBy: allUsers[0]!.id,
-    },
-    {
-      tenantId: tid,
-      projectId: insertedProjects[1]!.id,
-      title: "Sprint retrospective",
-      description: "Bi-weekly sprint retrospective and velocity review",
-      priority: "medium",
-      schedule: "weekly",
-      cronExpression: "0 15 * * 5",
-      enabled: true,
-      createdBy: allUsers[1]?.id ?? allUsers[0]!.id,
-    },
-  ]);
-  console.log("  3 recurring task configs created");
-
-  // --- Reminders ---
-  for (let i = 0; i < Math.min(6, allTasks.length); i++) {
-    await db.insert(taskReminders).values({
-      tenantId: tid,
-      taskId: allTasks[i]!.id,
-      userId: allUsers[i % allUsers.length]!.id,
-      remindAt: new Date(Date.now() + (i + 1) * 86400000),
-      channel: i % 3 === 0 ? "email" : "in_app",
-    });
-  }
-  console.log("  6 task reminders created");
-
-  // --- Notifications for ALL users ---
-  const notifTemplates = [
-    { type: "task_assigned", title: "New task assigned", body: "You've been assigned 'Build dashboard UI' on Platform Rebuild" },
-    { type: "comment_added", title: "New comment", body: "Someone commented on 'Create REST API endpoints'" },
-    { type: "task_status", title: "Task completed", body: "'Set up project repository' was marked as completed" },
-    { type: "mention", title: "You were mentioned", body: "You were mentioned in a comment on 'Implement search functionality'" },
-    { type: "deadline", title: "Deadline approaching", body: "'Security audit' is due in 2 days" },
-    { type: "task_assigned", title: "Task reassigned", body: "'Performance optimization' has been reassigned to you" },
-    { type: "comment_added", title: "Reply to your comment", body: "Someone replied to your comment on 'Define database schema'" },
-    { type: "task_status", title: "Task moved to In Progress", body: "'Write unit tests' was moved to In Progress" },
-  ];
-
-  const notifValues: Array<{
-    tenantId: string;
-    userId: string;
-    type: string;
-    title: string;
-    body: string;
-  }> = [];
-
-  for (const user of allUsers) {
-    for (const tmpl of notifTemplates) {
-      notifValues.push({
-        tenantId: tid,
-        userId: user.id,
-        type: tmpl.type,
-        title: tmpl.title,
-        body: tmpl.body,
-      });
-    }
-  }
-  const NOTIF_BATCH = 500;
-  for (let i = 0; i < notifValues.length; i += NOTIF_BATCH) {
-    await db.insert(notifications).values(notifValues.slice(i, i + NOTIF_BATCH));
-  }
-  console.log(`  ${notifValues.length} notifications created (${notifTemplates.length} per user)`);
+  // R1-DEFERRED: recurring tasks, reminders, and notifications skipped for R0
 
   // --- Audit log entries ---
   const auditEntries = [
@@ -881,7 +820,7 @@ async function seed() {
   }
   console.log(`  ${insertedTags.length} tags`);
   console.log(`  ${insertedProjects.length} projects, ${insertedProjects.length * 4} phases, ${allTasks.length} tasks`);
-  console.log("  Comments, checklists, dependencies, assignments, notifications, reminders, audit log");
+  console.log("  Comments, checklists, dependencies, assignments, audit log");
   process.exit(0);
 }
 

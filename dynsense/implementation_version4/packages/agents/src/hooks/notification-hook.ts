@@ -1,7 +1,7 @@
 // Ref: FR-348 — notification-hook: notify users on AI-initiated mutations
 // Ref: FR-306 — Nudge limits: max 2 per task per day
 // Ref: design-doc §4.4 — Phase: PostToolUse (parallel)
-// R0: Write to notifications table. R1 adds NATS pub/sub delivery.
+// R0: Write to notifications table. Events delivered via PostgreSQL LISTEN/NOTIFY.
 import { eq, and, gte, count } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { Database } from "@dynsense/db";

@@ -1,3 +1,4 @@
+// R1-DEFERRED — not included in R0 launch
 // Ref: FR-641 — embeddings table for pgvector RAG context
 // Ref: requirements §13.1 — 1536-dim, IVFFlat index (R0), HNSW (R3)
 // Ref: design-doc §5.3 — IVFFlat for pgvector (R0-R2)

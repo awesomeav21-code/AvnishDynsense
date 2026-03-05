@@ -15,7 +15,7 @@ export { scopeDetectorConfig } from "./agents/scope-detector.js";
 export { tenantIsolator } from "./hooks/tenant-isolator.js";
 export type { HookContext, HookResult } from "./hooks/tenant-isolator.js";
 export { autonomyEnforcer } from "./hooks/autonomy-enforcer.js";
-export { rateLimiter } from "./hooks/rate-limiter.js";
+export { rateLimiter, setRedisRateIncrement } from "./hooks/rate-limiter.js";
 export { costTracker } from "./hooks/cost-tracker.js";
 export type { CostTrackingData } from "./hooks/cost-tracker.js";
 export { auditWriter } from "./hooks/audit-writer.js";

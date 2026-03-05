@@ -1,3 +1,4 @@
+// R1-DEFERRED — not included in R0 launch
 import { pgTable, uuid, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { tasks } from "./tasks.js";
 import { customFieldDefinitions } from "./custom-field-definitions.js";

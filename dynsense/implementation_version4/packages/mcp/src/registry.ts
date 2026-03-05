@@ -3,14 +3,18 @@
 import type { McpServer, McpTool, McpToolCallResult, McpToolCallContext } from "./types.js";
 import { pmDbServer } from "./servers/pm-db.js";
 import { pgvectorServer } from "./servers/pgvector.js";
-import { pmNatsServer } from "./servers/pm-nats.js";
+import { githubServer } from "./servers/github.js";
+import { m365Server } from "./servers/m365.js";
+import { firefliesServer } from "./servers/fireflies.js";
 
 const serverRegistry = new Map<string, McpServer>();
 
 export function initializeRegistry(): void {
   serverRegistry.set(pmDbServer.name, pmDbServer);
   serverRegistry.set(pgvectorServer.name, pgvectorServer);
-  serverRegistry.set(pmNatsServer.name, pmNatsServer);
+  serverRegistry.set(githubServer.name, githubServer);
+  serverRegistry.set(m365Server.name, m365Server);
+  serverRegistry.set(firefliesServer.name, firefliesServer);
 }
 
 export function getServer(name: string): McpServer | undefined {
@@ -38,7 +42,7 @@ export function getToolsForAgent(allowedServers: string[], readOnly: boolean): M
 
 /**
  * FR-324: Dispatch a tool call to the appropriate MCP server handler.
- * Format: "server.tool" (e.g., "pgvector.search", "pm-nats.publish")
+ * Format: "server.tool" (e.g., "pgvector.search", "pm-db.query")
  */
 export async function callTool(
   qualifiedName: string,

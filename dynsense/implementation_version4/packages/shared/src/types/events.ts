@@ -1,4 +1,4 @@
-// Ref: design-doc §6.1 — NATS JetStream 12 streams
+// Ref: ARCHITECTURE 1.md §4.2 — PostgreSQL LISTEN/NOTIFY event channels
 // Ref: FR-141 — Actor type tracking (human vs AI)
 
 export interface BaseEvent {
@@ -8,7 +8,7 @@ export interface BaseEvent {
   timestamp: string;
 }
 
-// ---- pm.tasks stream ----
+// ---- pm_tasks_created / pm_tasks_updated / pm_tasks_completed channels ----
 
 export interface TaskEvent extends BaseEvent {
   taskId: string;
@@ -35,7 +35,7 @@ export interface TaskDependencyResolvedEvent extends TaskEvent {
   blockerTaskId: string;
 }
 
-// ---- pm.projects stream ----
+// ---- pm_projects_created channel ----
 
 export interface ProjectCreatedEvent extends BaseEvent {
   type: "project.created";
@@ -53,7 +53,7 @@ export interface ProjectBaselineSetEvent extends BaseEvent {
   projectId: string;
 }
 
-// ---- pm.comments stream ----
+// ---- pm_comments_added channel ----
 
 export interface CommentCreatedEvent extends BaseEvent {
   type: "comment.created";
@@ -67,7 +67,7 @@ export interface MentionCreatedEvent extends BaseEvent {
   mentionedUserId: string;
 }
 
-// ---- pm.ai stream ----
+// ---- pm_ai_actions channel ----
 
 export interface AiActionProposedEvent extends BaseEvent {
   type: "ai.action_proposed";
@@ -96,7 +96,7 @@ export interface AiConfidenceLowEvent extends BaseEvent {
   confidence: number;
 }
 
-// ---- pm.system stream ----
+// ---- system events ----
 
 export interface ConfigChangedEvent extends BaseEvent {
   type: "system.config_changed";

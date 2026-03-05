@@ -26,8 +26,8 @@ export {
   AI_CIRCUIT_BREAKER_THRESHOLD, AI_CIRCUIT_BREAKER_RESET_MS,
 } from "./constants/ai-capabilities.js";
 export type { SubagentConfig } from "./constants/ai-capabilities.js";
-export { NATS_STREAMS } from "./constants/nats-streams.js";
-export type { NatsStream } from "./constants/nats-streams.js";
+export { PG_CHANNELS, ALL_PG_CHANNELS } from "./constants/pg-channels.js";
+export type { PgChannel } from "./constants/pg-channels.js";
 
 // ---- Schemas ----
 export {

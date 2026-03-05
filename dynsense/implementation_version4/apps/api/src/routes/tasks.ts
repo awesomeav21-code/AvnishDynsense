@@ -11,6 +11,8 @@ import { requirePermission } from "../middleware/rbac.js";
 import { getDb } from "../db.js";
 import { writeAuditLog, computeDiff } from "./audit.js";
 import { broadcastToTenant } from "./sse.js";
+import { pgNotify } from "../plugins/pg-events.js";
+import { PG_CHANNELS } from "@dynsense/shared";
 import type { Env } from "../config/env.js";
 import { z } from "zod";
 
@@ -220,6 +222,13 @@ export async function taskRoutes(app: FastifyInstance) {
       diff: { title: { old: null, new: task!.title }, status: { old: null, new: task!.status } },
     });
 
+    // PostgreSQL NOTIFY — task created
+    pgNotify(env.DATABASE_URL, PG_CHANNELS.TASKS_CREATED, {
+      tenantId,
+      event: "task_created",
+      data: { taskId: task!.id, title: task!.title, projectId: task!.projectId, createdBy: request.jwtPayload.sub },
+    }).catch(() => {});
+
     reply.status(201).send({ data: task });
   });
 
@@ -297,6 +306,13 @@ export async function taskRoutes(app: FastifyInstance) {
         actorId: request.jwtPayload.sub,
         diff,
       });
+
+      // PostgreSQL NOTIFY — task updated
+      pgNotify(env.DATABASE_URL, PG_CHANNELS.TASKS_UPDATED, {
+        tenantId,
+        event: "task_updated",
+        data: { taskId: id, updatedBy: request.jwtPayload.sub, fields: Object.keys(diff) },
+      }).catch(() => {});
     }
 
     return { data: updated };
@@ -338,6 +354,14 @@ export async function taskRoutes(app: FastifyInstance) {
       newStatus: status,
       updatedBy: sub,
     });
+
+    // PostgreSQL NOTIFY — task updated / completed
+    const channel = status === "completed" ? PG_CHANNELS.TASKS_COMPLETED : PG_CHANNELS.TASKS_UPDATED;
+    pgNotify(env.DATABASE_URL, channel, {
+      tenantId,
+      event: status === "completed" ? "task_completed" : "task_status_changed",
+      data: { taskId: id, oldStatus: existing.status, newStatus: status, updatedBy: sub },
+    }).catch(() => {});
 
     // Auto-unblock dependents on task completion (FR-125)
     if (status === "completed") {

@@ -2,7 +2,11 @@
 // Ref: FR-200 — 7-stage orchestration pipeline
 // Ref: design-doc §4.1 — Trigger → Autonomy → Context → Confidence → LLM → PostProcess → Disposition
 import { randomUUID } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type ConverseCommandOutput,
+} from "@aws-sdk/client-bedrock-runtime";
 import { eq, and } from "drizzle-orm";
 import type { Database } from "@dynsense/db";
 import { tenantConfigs, aiSessions } from "@dynsense/db";
@@ -66,8 +70,8 @@ const LLM_BASE_DELAY_MS = 1000;
 
 // FR-362: Token budget per model (context window limits)
 const TOKEN_BUDGETS: Record<string, number> = {
-  "claude-sonnet-4-20250514": 180_000, // 200k window, leave headroom
-  "claude-opus-4-20250514": 180_000,
+  "us.anthropic.claude-sonnet-4-20250514": 180_000, // 200k window, leave headroom
+  "us.anthropic.claude-opus-4-20250514": 180_000,
 };
 const DEFAULT_TOKEN_BUDGET = 180_000;
 
@@ -97,10 +101,10 @@ const CAPABILITY_CONFIGS: Record<string, AgentConfig> = {
   task_decomposition: taskDecompositionConfig,
 };
 
-// Model name mapping: our internal model names → Anthropic model IDs
+// Model name mapping: our internal model names → AWS Bedrock model IDs
 const MODEL_MAP: Record<string, string> = {
-  sonnet: "claude-sonnet-4-20250514",
-  opus: "claude-opus-4-20250514",
+  sonnet: "us.anthropic.claude-sonnet-4-20250514",
+  opus: "us.anthropic.claude-opus-4-20250514",
 };
 
 // ---------------------------------------------------------------------------
@@ -109,12 +113,12 @@ const MODEL_MAP: Record<string, string> = {
 
 export class AIOrchestrator {
   private readonly db: Database;
-  private readonly client: Anthropic | null;
+  private readonly client: BedrockRuntimeClient | null;
 
-  constructor(opts: { db: Database; anthropicApiKey?: string }) {
+  constructor(opts: { db: Database; awsRegion?: string }) {
     this.db = opts.db;
-    this.client = opts.anthropicApiKey
-      ? new Anthropic({ apiKey: opts.anthropicApiKey })
+    this.client = opts.awsRegion
+      ? new BedrockRuntimeClient({ region: opts.awsRegion })
       : null;
   }
 
@@ -280,7 +284,7 @@ export class AIOrchestrator {
     // -----------------------------------------------------------------------
     // Stage 4 & 5: LLM CALL — Call Claude API via Anthropic SDK
     // FR-361: Retry with exponential backoff (3 attempts, model fallback)
-    // Falls back to stub if ANTHROPIC_API_KEY is not configured
+    // Falls back to stub if AWS_REGION is not configured
     // -----------------------------------------------------------------------
     let llmOutput: Record<string, unknown> | null = null;
     let confidence = 0.0;
@@ -302,37 +306,34 @@ export class AIOrchestrator {
 
         for (let attempt = 0; attempt < LLM_MAX_RETRIES; attempt++) {
           try {
-            const response = await this.client.messages.create({
-              model: currentModel,
-              max_tokens: 4096,
-              system: agentConfig.systemPrompt,
-              messages: [{ role: "user", content: truncatedMessage }],
+            const command = new ConverseCommand({
+              modelId: currentModel,
+              system: [{ text: agentConfig.systemPrompt }],
+              messages: [{ role: "user", content: [{ text: truncatedMessage }] }],
+              inferenceConfig: { maxTokens: 4096 },
             });
 
-            // Extract text content from response
-            const textBlocks = response.content.filter(
-              (block) => block.type === "text",
-            );
-            const rawText = textBlocks.map((b) => {
-              if (b.type === "text") return b.text;
-              return "";
-            }).join("\n");
+            const response: ConverseCommandOutput = await this.client.send(command);
+
+            // Extract text content from Bedrock Converse response
+            const outputContent = response.output?.message?.content ?? [];
+            const rawText = outputContent
+              .map((block) => ("text" in block ? block.text : ""))
+              .join("\n");
 
             // Stage 6: POST-PROCESSING — Parse structured output
             const parseResult = this.parseOutput(input.capability, rawText);
             llmOutput = parseResult.output;
             confidence = parseResult.confidence;
 
-            // Track token usage for cost tracking
+            // Track token usage for cost tracking (Bedrock usage metrics)
+            const inputTokens = response.usage?.inputTokens ?? 0;
+            const outputTokens = response.usage?.outputTokens ?? 0;
             costData = {
               model: currentModel,
-              inputTokens: response.usage.input_tokens,
-              outputTokens: response.usage.output_tokens,
-              costUsd: this.estimateCost(
-                currentModel,
-                response.usage.input_tokens,
-                response.usage.output_tokens,
-              ),
+              inputTokens,
+              outputTokens,
+              costUsd: this.estimateCost(currentModel, inputTokens, outputTokens),
             };
 
             turnCount = 1;
@@ -355,7 +356,7 @@ export class AIOrchestrator {
         status = "failed";
       }
     } else {
-      // No API key configured — return stub output
+      // No AWS region configured — return stub output
       llmOutput = this.generateStubOutput(input.capability, input.input);
       confidence = 0.75;
       status = "proposed";
@@ -754,10 +755,10 @@ export class AIOrchestrator {
     inputTokens: number,
     outputTokens: number,
   ): number {
-    // Pricing as of 2025 (per million tokens)
+    // Bedrock pricing as of 2025 (per million tokens, includes ~10% Bedrock premium)
     const pricing: Record<string, { input: number; output: number }> = {
-      "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
-      "claude-opus-4-20250514": { input: 15.0, output: 75.0 },
+      "us.anthropic.claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
+      "us.anthropic.claude-opus-4-20250514": { input: 15.0, output: 75.0 },
     };
 
     const rate = pricing[model] ?? { input: 3.0, output: 15.0 };
@@ -768,7 +769,7 @@ export class AIOrchestrator {
   }
 
   // -------------------------------------------------------------------------
-  // Stub output for when ANTHROPIC_API_KEY is not configured
+  // Stub output for when AWS_REGION is not configured
   // -------------------------------------------------------------------------
   private generateStubOutput(
     capability: string,
@@ -808,7 +809,7 @@ export class AIOrchestrator {
               tasks: ["Staging deployment", "UAT", "Production cutover"],
             },
           ],
-          note: "Stub output — set ANTHROPIC_API_KEY for real AI-generated WBS.",
+          note: "Stub output — set AWS_REGION for real AI-generated WBS.",
         };
       case "whats_next":
         return {
@@ -833,13 +834,13 @@ export class AIOrchestrator {
           type: "query_result",
           query: input["query"] ?? "No query provided",
           answer:
-            "Stub response — set ANTHROPIC_API_KEY to enable natural language queries.",
+            "Stub response — set AWS_REGION to enable natural language queries.",
           sources: [],
         };
       case "summary_writer":
         return {
           type: "summary",
-          text: "Stub summary — set ANTHROPIC_API_KEY for real AI-generated summaries.",
+          text: "Stub summary — set AWS_REGION for real AI-generated summaries.",
         };
       case "risk_predictor":
         return {
@@ -863,7 +864,7 @@ export class AIOrchestrator {
             },
           ],
           overallRiskScore: 0.65,
-          note: "Stub output — set ANTHROPIC_API_KEY for real AI-driven risk analysis.",
+          note: "Stub output — set AWS_REGION for real AI-driven risk analysis.",
         };
       case "ai_pm_agent":
         return {
@@ -883,7 +884,7 @@ export class AIOrchestrator {
             },
           ],
           summary: "2 tasks need attention: 1 overdue, 1 stalled.",
-          note: "Stub output — set ANTHROPIC_API_KEY for real AI PM nudges.",
+          note: "Stub output — set AWS_REGION for real AI PM nudges.",
         };
       case "scope_detector":
         return {
@@ -894,7 +895,7 @@ export class AIOrchestrator {
           removedTasks: [],
           scopeVariancePercent: 16.7,
           assessment: "Moderate scope creep detected: 4 tasks added beyond baseline WBS.",
-          note: "Stub output — set ANTHROPIC_API_KEY for real scope analysis.",
+          note: "Stub output — set AWS_REGION for real scope analysis.",
         };
       case "task_decomposition":
         return {
@@ -905,12 +906,12 @@ export class AIOrchestrator {
             `Write tests and validate`,
             `Review and polish`,
           ],
-          note: "Stub output — set ANTHROPIC_API_KEY for AI-generated subtasks.",
+          note: "Stub output — set AWS_REGION for AI-generated subtasks.",
         };
       default:
         return {
           type: capability,
-          message: `Stub output for capability '${capability}'. Set ANTHROPIC_API_KEY for real results.`,
+          message: `Stub output for capability '${capability}'. Set AWS_REGION for real results.`,
         };
     }
   }

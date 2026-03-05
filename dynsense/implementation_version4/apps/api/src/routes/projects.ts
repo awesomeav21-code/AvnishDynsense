@@ -5,6 +5,8 @@ import { createProjectSchema, updateProjectSchema, projectIdParamSchema } from "
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
+import { pgNotify } from "../plugins/pg-events.js";
+import { PG_CHANNELS } from "@dynsense/shared";
 import type { Env } from "../config/env.js";
 
 export async function projectRoutes(app: FastifyInstance) {
@@ -65,6 +67,13 @@ export async function projectRoutes(app: FastifyInstance) {
         position: i,
       }))
     );
+
+    // PostgreSQL NOTIFY — project created
+    pgNotify(env.DATABASE_URL, PG_CHANNELS.PROJECTS_CREATED, {
+      tenantId,
+      event: "project_created",
+      data: { projectId: project.id, name: project.name, createdBy: request.jwtPayload.sub },
+    }).catch(() => {});
 
     reply.status(201).send({ data: project });
   });

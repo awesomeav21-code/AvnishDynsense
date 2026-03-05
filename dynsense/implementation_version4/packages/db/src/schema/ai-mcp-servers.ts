@@ -1,3 +1,4 @@
+// R1-DEFERRED — not included in R0 launch
 // Ref: FR-625 — ai_mcp_servers table (NOT tenant-scoped — global registry)
 // Ref: FR-324 — MCP registry for tool dispatch and server lifecycle
 import { pgTable, uuid, varchar, jsonb, timestamp } from "drizzle-orm/pg-core";

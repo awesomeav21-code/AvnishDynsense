@@ -2,22 +2,28 @@ import type { FastifyInstance } from "fastify";
 import { eq, and, desc, isNull, ne } from "drizzle-orm";
 import { aiActions, aiSessions, aiHookLog, projects, tasks, users } from "@dynsense/db";
 import { aiExecuteSchema, aiReviewActionSchema } from "@dynsense/shared";
-import { AIOrchestrator } from "@dynsense/agents";
+import { AIOrchestrator, setRedisRateIncrement } from "@dynsense/agents";
+import { redisRateIncrement } from "../plugins/redis.js";
 import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { writeAuditLog } from "./audit.js";
 import { getDb } from "../db.js";
+import { pgNotify } from "../plugins/pg-events.js";
+import { PG_CHANNELS } from "@dynsense/shared";
 import type { Env } from "../config/env.js";
 
 export async function aiRoutes(app: FastifyInstance) {
   const env = app.env as Env;
   const db = getDb(env);
 
-  // Create orchestrator instance — falls back to stub output if no API key
+  // Inject Redis-backed rate limiting into the agents package
+  setRedisRateIncrement(redisRateIncrement);
+
+  // Create orchestrator instance — falls back to stub output if no AWS region
   const orchestrator = new AIOrchestrator({
     db,
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    awsRegion: env.AWS_REGION,
   });
 
   app.addHook("preHandler", authenticate);
@@ -182,6 +188,13 @@ export async function aiRoutes(app: FastifyInstance) {
           .catch(() => { /* non-blocking — WBS storage is best-effort */ });
       }
     }
+
+    // PostgreSQL NOTIFY — AI action
+    pgNotify(env.DATABASE_URL, PG_CHANNELS.AI_ACTIONS, {
+      tenantId,
+      event: "ai_action",
+      data: { aiActionId: action!.id, capability: body.capability, status: result.status, disposition: result.disposition },
+    }).catch(() => {});
 
     reply.status(201).send({ data: updated });
   });

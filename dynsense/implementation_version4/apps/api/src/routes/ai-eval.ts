@@ -45,7 +45,7 @@ export async function aiEvalRoutes(app: FastifyInstance) {
   const db = getDb(env);
   const orchestrator = new AIOrchestrator({
     db,
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    awsRegion: env.AWS_REGION,
   });
 
   app.addHook("preHandler", authenticate);

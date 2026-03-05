@@ -4,6 +4,8 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { errorHandler } from "./middleware/error-handler.js";
+import { pgEventsPlugin } from "./plugins/pg-events.js";
+import { redisPlugin } from "./plugins/redis.js";
 import { authRoutes } from "./routes/auth.js";
 import { projectRoutes } from "./routes/projects.js";
 import { taskRoutes } from "./routes/tasks.js";
@@ -64,6 +66,12 @@ export async function buildApp(env: Env) {
 
   // Global error handler
   app.setErrorHandler(errorHandler);
+
+  // Redis (session cache, rate limiting)
+  await app.register(redisPlugin);
+
+  // PostgreSQL LISTEN/NOTIFY event bus
+  await app.register(pgEventsPlugin);
 
   // Health check
   app.get("/health", async () => ({

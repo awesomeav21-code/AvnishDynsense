@@ -9,6 +9,7 @@ import { AppError } from "../utils/errors.js";
 import { authenticate } from "../middleware/auth.js";
 import { getDb } from "../db.js";
 import type { Env } from "../config/env.js";
+import { cacheRefreshToken, getCachedRefreshToken, deleteCachedRefreshToken } from "../plugins/redis.js";
 
 export async function authRoutes(app: FastifyInstance) {
   const env = app.env as Env;
@@ -33,6 +34,8 @@ export async function authRoutes(app: FastifyInstance) {
     const accessToken = app.jwt.sign(payload, { expiresIn: env.JWT_ACCESS_TOKEN_EXPIRY });
     const refreshToken = app.jwt.sign(payload, { expiresIn: env.JWT_REFRESH_TOKEN_EXPIRY });
     await db.update(users).set({ refreshToken }).where(eq(users.id, membership.id));
+    // Cache in Redis for fast lookup on refresh
+    await cacheRefreshToken(membership.id, refreshToken);
     return { accessToken, refreshToken };
   }
 
@@ -332,12 +335,26 @@ export async function authRoutes(app: FastifyInstance) {
       throw AppError.unauthorized("Invalid or expired refresh token");
     }
 
+    // Check Redis cache first, fall back to DB
+    const cachedToken = await getCachedRefreshToken(decoded.sub);
+    if (cachedToken) {
+      if (cachedToken !== body.refreshToken) {
+        throw AppError.unauthorized("Invalid refresh token");
+      }
+    } else {
+      const dbUser = await db.query.users.findFirst({
+        where: eq(users.id, decoded.sub),
+      });
+      if (!dbUser || dbUser.refreshToken !== body.refreshToken) {
+        throw AppError.unauthorized("Invalid refresh token");
+      }
+    }
+
+    // Fetch user for issueTokens (always needed for accountId)
     const user = await db.query.users.findFirst({
       where: eq(users.id, decoded.sub),
     });
-    if (!user || user.refreshToken !== body.refreshToken) {
-      throw AppError.unauthorized("Invalid refresh token");
-    }
+    if (!user) throw AppError.unauthorized("User not found");
 
     const tokens = await issueTokens(user, decoded.accountId ?? user.accountId ?? user.id);
 
@@ -400,6 +417,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/logout", { preHandler: [authenticate] }, async (request, reply) => {
     const { sub } = request.jwtPayload;
     await db.update(users).set({ refreshToken: null }).where(eq(users.id, sub));
+    await deleteCachedRefreshToken(sub);
     reply.send({ message: "Logged out" });
   });
 }

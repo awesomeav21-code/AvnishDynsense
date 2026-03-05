@@ -1,3 +1,4 @@
+// R1-DEFERRED — not included in R0 launch
 import { pgTable, uuid, varchar, jsonb, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";
 import { projects } from "./projects.js";

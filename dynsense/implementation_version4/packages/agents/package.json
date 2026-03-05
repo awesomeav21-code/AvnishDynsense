@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.750.0",
     "@dynsense/db": "workspace:*",
     "@dynsense/mcp": "workspace:*",
     "@dynsense/shared": "workspace:*",
